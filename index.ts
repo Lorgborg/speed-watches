@@ -1,5 +1,5 @@
 import express from "express";
-import { Schema, model, connect, Document, Model, connection, disconnect, createConnection } from 'mongoose';
+import { Schema, model, connect, Document, disconnect } from 'mongoose';
 import Participant from "./utils/participant";
 import riotApi from "./utils/riot"
 const app = express()
@@ -103,6 +103,7 @@ app.get("/speedwatches/match/check", async (req, res) => {
 
 })
 
+// temporary endpoint
 app.get("/speedwatches/addUser", async (req, res) => {
     if(process.env["mongoUri"] == undefined){
         throw("no mongo uri, check your .env")

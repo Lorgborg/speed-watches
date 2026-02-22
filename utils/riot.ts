@@ -1,4 +1,4 @@
-import axios, { AxiosResponse } from "axios"
+import axios, { Axios, AxiosResponse } from "axios"
 
 export default class riotApi {
     private apiKey: string;
@@ -21,8 +21,13 @@ export default class riotApi {
     }
 
     
-    /*
-     *  turns tag to id
+    /**
+     * league user name to puuid
+     *
+     * @param {string} name - the name
+     * @param {string} id - the riot tag (after the #)
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await
      */
     public summonerNameToId(name: string, id: string): Promise<AxiosResponse>{
         let usedId: string = id
