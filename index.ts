@@ -2,23 +2,9 @@ import express from "express";
 import { Schema, model, connect, Document, disconnect } from 'mongoose';
 import Participant from "./utils/participant";
 import riotApi from "./utils/riot"
-const app = express()
-const port = 3000
 import "dotenv/config"
 import getOpponent from "./utils/functions/getOpponent";
 const riot = new riotApi(process.env["leagueApi"])
-
-app.get("/speedwatches/match/current", async (req, res) => {
-    const user = await riot.summonerNameToId("Karma", "haru")
-
-    try {
-        const current = await (await riot.idToCurrentMatch(user.data.puuid)).data
-        res.send({ isInMatch: true, content: current })
-    } catch(AxiosError) {
-        console.log("not in match")
-        res.send( { isInMatch: false } )
-    }
-})
 
 interface summonerUser extends Document {
     puuid: string;
@@ -51,7 +37,12 @@ const gameSchema = new Schema({
 const summonerUserModel = model<summonerUser>("summonerUser", summonerUserSchema)
 const gameModel = model("game", gameSchema)
 
-app.get("/speedwatches/match/check", async (req, res) => {
+function toMilliseconds(minute: number): number {
+    const milliseconds: number = minute * 60000 
+    return milliseconds
+}
+
+async function check() {
     // try catch for getting games
     try {
         if(process.env["mongoUri"] == undefined){
@@ -93,39 +84,12 @@ app.get("/speedwatches/match/check", async (req, res) => {
                 }
             }
         }
-        res.send("saved")
-    } catch(e) {
-        res.send(`error: ${e}`)
-    } finally {
-        disconnect()
-    }
-
-
-})
-
-// temporary endpoint
-app.get("/speedwatches/addUser", async (req, res) => {
-    if(process.env["mongoUri"] == undefined){
-        throw("no mongo uri, check your .env")
-    }
-    try {
-        await connect(process.env["mongoUri"].replace("?", "league?"))
-        console.log(`req body to save ${JSON.stringify(req.query)}`)
-        const { puuid, user, discordId } = req.query
-        const saving = await summonerUserModel.create({
-            puuid: puuid,
-            user: user,
-            discordId: discordId
-        })
-        res.send(`saved to collection ${saving.collection.name} and db ${saving.db.name} with generated id of: ${saving.id}`)
+        console.log("saved")
     } catch(e) {
         console.log(`error: ${e}`)
-        res.send(`an error has occured: ${e}`)
     } finally {
         disconnect()
     }
-})
+}
 
-app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
-})
+setInterval(check, toMilliseconds(10))
