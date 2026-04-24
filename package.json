@@ -4,9 +4,14 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "mongodb": "^7.1.0",
-    "mongoose": "^8.23.0"
+    "mongoose": "^8.23.0",
+    "tsx": "4.21.0"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6"
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0"
+  },
+  "scripts": {
+    "start": "npx tsx index.ts"
   }
 }
