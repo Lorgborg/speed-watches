@@ -1,6 +1,0 @@
-{
-  "crons": [{
-    "path": "/speedwatches/match/check",
-    "schedule": "*/10 * * * *"
-  }]
-}
