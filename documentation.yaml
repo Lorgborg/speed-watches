@@ -6,7 +6,21 @@ info:
 paths:
   /speedwatches/match/check:
     get:
-      summary: updates the database by checking the past 5 games of users in summonerusers collection.
+      summary: update the database
+      description: updates the database by checking the past 5 games of users in summonerusers collection.
       parameters: none
       responses:
         "200": saved
+  /speedwatches/get/matchup:
+    get:
+      summary: get notes of specific matchup
+      parameters:
+        username:
+          type: string or null
+          description: username of query. Can be null
+        championPlayed:
+          type: string or null
+          description: name of the champion you'd like to play as
+        championFighting:
+          type: string or null
+          description: name of the champion you'd like to play against
