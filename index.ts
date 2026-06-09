@@ -1,24 +1,9 @@
-import express from "express";
 import { Schema, model, connect, Document, disconnect } from 'mongoose';
-import Participant from "./utils/participant";
-import riotApi from "./utils/riot"
-const app = express()
-const port = 3000
+import Participant from "./utils/participant.ts";
+import riotApi from "./utils/riot.ts"
 import "dotenv/config"
-import getOpponent from "./utils/functions/getOpponent";
+import getOpponent from "./utils/functions/getOpponent.ts";
 const riot = new riotApi(process.env["leagueApi"])
-
-app.get("/speedwatches/match/current", async (req, res) => {
-    const user = await riot.summonerNameToId("Karma", "haru")
-
-    try {
-        const current = await (await riot.idToCurrentMatch(user.data.puuid)).data
-        res.send({ isInMatch: true, content: current })
-    } catch(AxiosError) {
-        console.log("not in match")
-        res.send( { isInMatch: false } )
-    }
-})
 
 interface summonerUser extends Document {
     puuid: string;
@@ -51,9 +36,12 @@ const gameSchema = new Schema({
 const summonerUserModel = model<summonerUser>("summonerUser", summonerUserSchema)
 const gameModel = model("game", gameSchema)
 
-app.get("/speedwatches/match/check", async (req, res) => {
+console.log("starting game updates...")
+
+async function check() {
     // try catch for getting games
     try {
+        console.log("updating games...")
         if(process.env["mongoUri"] == undefined){
             throw("no mongo uri, check your .env")
         }
@@ -67,8 +55,8 @@ app.get("/speedwatches/match/check", async (req, res) => {
                 const gameQuery = await gameModel.findOne({ matchId: match, puuid: summoner.puuid })
                 
                 // we save it if not found
-                console.log(`game query is: ${gameQuery}`)
                 if(gameQuery == null){
+                    console.log("saving game with id: " + match)
                     const matchDetails = await riot.matchIdToMatches(match)
                     const participants: Participant[] = matchDetails.data.info.participants
                     // saves to database
@@ -93,39 +81,16 @@ app.get("/speedwatches/match/check", async (req, res) => {
                 }
             }
         }
-        res.send("saved")
-    } catch(e) {
-        res.send(`error: ${e}`)
-    } finally {
-        disconnect()
-    }
-
-
-})
-
-// temporary endpoint
-app.get("/speedwatches/addUser", async (req, res) => {
-    if(process.env["mongoUri"] == undefined){
-        throw("no mongo uri, check your .env")
-    }
-    try {
-        await connect(process.env["mongoUri"].replace("?", "league?"))
-        console.log(`req body to save ${JSON.stringify(req.query)}`)
-        const { puuid, user, discordId } = req.query
-        const saving = await summonerUserModel.create({
-            puuid: puuid,
-            user: user,
-            discordId: discordId
-        })
-        res.send(`saved to collection ${saving.collection.name} and db ${saving.db.name} with generated id of: ${saving.id}`)
+        console.log("finished updating games");
     } catch(e) {
         console.log(`error: ${e}`)
-        res.send(`an error has occured: ${e}`)
     } finally {
         disconnect()
     }
-})
+}
 
-app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
-})
+check()
+
+setInterval(check, 5 * 60 * 1000) // runs 5 minutes
+
+// temporary endpoint

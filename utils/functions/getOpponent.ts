@@ -11,6 +11,6 @@ export default function getOpponent(participants: Participant[], myPuuid: string
   if(enemy){
     return enemy.championName
   } else {
-    return undefined
+    return "no opponent found"
   }
 }
