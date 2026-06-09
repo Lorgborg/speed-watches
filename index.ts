@@ -2,7 +2,8 @@
 import express from "express";
 const app = express()
 const port = 3000
-import { connect, disconnect, FilterQuery } from 'mongoose';
+import { connect, FilterQuery } from 'mongoose';
+import { apiReference } from "@scalar/express-api-reference"
 
 // riot related imports and .env import
 import "dotenv/config"
@@ -20,23 +21,37 @@ import getOpponent from "./utils/functions/getOpponent";
 import getLeagueKey from "./utils/getLeagueKey";
 import { NoteModel } from "./utils/schemas/notes";
 
+import dns from "node:dns/promises";
+dns.setServers(["1.1.1.1"]);
+
 app.use(express.json())
+
+// app.use("/docs", apiReference({
+//     url: "/documentation.yaml",
+//     authentication: {
+//         preferredSecurityScheme: "VercelAuth",
+//         securitySchemes: {
+//             VercelAuth: {
+//                 type: "apiKey",
+//                 name: "Authorizatoin",
+//                 in: "header",
+//                 value: process.env.vercelBypass ?? ""
+//             }
+//         }
+//     }
+// }))
 
 // save all necessary info to save on api calls needed when querying data
 app.get("/speedwatches/match/check", async (req, res) => {
     // try catch for getting games
     try {
-        await connect(getLeagueKey())
-        const summoners = summonerUserModel.find()
+        const summoners = await summonerUserModel.find()
 
-        for await (const summoner of summoners) {
+        for (const summoner of summoners) {
             const matches = await riot.idToMatch(summoner.puuid)
             for (const match of matches.data) {
                 // checks if the game is saved in db
                 const gameQuery = await gameModel.findOne({ matchId: match, puuid: summoner.puuid })
-                
-                // we save it if not found
-                console.log(`game query is: ${gameQuery}`)
                 if(gameQuery == null){
                     const matchDetails = await riot.matchIdToMatches(match)
                     const participants: Participant[] = matchDetails.data.info.participants
@@ -60,46 +75,40 @@ app.get("/speedwatches/match/check", async (req, res) => {
                         }
                     }
                     // updates the notes schema. Here in place of a propper trigger for now
-                    try {
-                        await bulkNoteUpdate()
-                    } catch {
-                        console.log("There was an error in the bulk update of notes")
-                    }
                 }
             }
+        }
+        
+        try {
+            await bulkNoteUpdate()
+            console.log("bulk updated notes")
+        } catch {
+            console.log("There was an error in the bulk update of notes")
         }
         res.send("saved")
     } catch(e) {
         res.send(`error: ${e}`)
-    } finally {
-        disconnect()
     }
-
-
 })
 
 app.get("/speedwatches/get/users", async (req, res) => {
     try {
-        await connect(getLeagueKey())
         const username = req.body["username"]
         console.log(username)
         
     } catch (e) {
         console.log(`error at /get/users \n${e}`)
-    } finally {
-        disconnect()
     }
 })
 
 app.get("/speedwatches/get/matchup", async (req, res) => {
     try {
-        await connect(getLeagueKey())
         const query: FilterQuery<typeof NoteModel> = {
 
         }
-        if(req.body["username"] != null){
+        if(req.query["username"] != null){
             const userDbQuery = await summonerUserModel.findOne(
-                { user: req.body["username"] },
+                { user: req.query["username"] },
                 { puuid: 1 }
             ).lean()
             if(userDbQuery == null){
@@ -109,8 +118,8 @@ app.get("/speedwatches/get/matchup", async (req, res) => {
             query.puuid = userDbQuery.puuid
         }
         
-        if(req.body["championPlayed"] != null) query.championPlayed = req.body["championPlayed"]
-        if(req.body["championFighting"] != null) query.championFighting = req.body["championFighting"]
+        if(req.query["championPlayed"] != null) query.championPlayed = req.body["championPlayed"]
+        if(req.query["championFighting"] != null) query.championFighting = req.body["championFighting"]
 
         console.log(`using query: ${query}`)
         const find = await NoteModel.find(
@@ -120,11 +129,13 @@ app.get("/speedwatches/get/matchup", async (req, res) => {
         res.send(find)
     } catch (e) {
         res.send(`error at /get/matchup \n${e}`)
-    } finally {
-        disconnect()
     }
 })
 
-app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
-})
+async function main() {
+    await connect(getLeagueKey())
+    
+    app.listen(port, () => console.log(`Server running on ${port}`))
+}
+
+main()

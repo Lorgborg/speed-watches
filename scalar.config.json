@@ -1,24 +1,29 @@
 {
-  "spec": {
-    "url": "./documentation.yaml"
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "info": {
+    "title": "speed-watches",
+    "description": "Documentation for speed-watchs"
   },
-  "theme": "default",
-  "layout": "modern",
-  "darkMode": true,
-  "hideModels": false,
-  "hideDownloadButton": false,
-  "defaultHttpClient": {
-    "targetKey": "javascript",
-    "clientKey": "fetch"
+  "siteConfig": {
+    "subdomain": "speed-watches"
   },
-  "servers": [
-    {
-      "url": "https://speed-watches-git-main-lorgborgs-projects.vercel.app/",
-      "description": "Deployed through vercel"
+  "navigation": {
+    "routes": {
+      "/": {
+        "type": "group",
+        "title": "Documentation",
+        "children": {
+          "/": {
+            "title": "Speed Watches",
+            "type": "openapi",
+            "mode": "flat",
+            "singlePage": false,
+            "showInSidebar": true,
+            "filepath": "documentation.yaml"
+          }
+        }
+      }
     }
-  ],
-  "metadata": {
-    "title": "G2R Api Documentation",
-    "description": "Documentation for the use of the speedwatches api"
   }
 }

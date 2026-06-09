@@ -1,27 +1,20 @@
-import { AnyBulkWriteOperation, connect, disconnect } from "mongoose";
+import { AnyBulkWriteOperation, connect, connection } from "mongoose";
 import { gameModel } from "../schemas/games";
 import { NoteModel } from "../schemas/notes";
 import "dotenv/config"
 
 export default async function bulkNoteUpdate() {
     try {
-        if (process.env.mongoUri) {
+        if (process.env.mongoUri && connection.readyState === 0) {
             const connectionString = process.env.mongoUri.replace("?", "league?")
             await connect(connectionString)
             console.log("Connected successfully")
-        } else {
-            console.log("No mongoUri found in environment variables")
-            return
         }
-
         const documents = await gameModel.find().lean()
         console.log("Total game documents:", documents.length)
 
         const existingNotes = await NoteModel.find().lean()
         console.log("Total existing notes:", existingNotes.length)
-
-        existingNotes.map(note => {})
-
         // this proccess bulk updates all the notes.
 
         const bulkOps: Array<AnyBulkWriteOperation<any>> = existingNotes.map(note => ({
@@ -56,7 +49,5 @@ export default async function bulkNoteUpdate() {
 
     } catch (err) {
         console.error("Migration failed:", err)
-    } finally {
-        await disconnect()
     }
 }
