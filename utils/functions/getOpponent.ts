@@ -1,8 +1,8 @@
-import Participant from "../participant";
+import Participant from "../participant.ts";
 
-export default function getOpponent(participants: Participant[], myPuuid: string): String | undefined {
+export default function getOpponent(participants: Participant[], myPuuid: string): string {
   const me = participants.find(p => p.puuid === myPuuid);
-  if (!me) return undefined;
+  if (!me) return "error";
 
   const enemy = participants.find(
     p => p.teamId !== me.teamId && p.individualPosition === me.individualPosition

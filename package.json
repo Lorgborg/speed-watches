@@ -4,11 +4,12 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "mongodb": "^7.1.0",
-    "mongoose": "^8.23.0"
+    "mongoose": "^8.23.0",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/node": "^25.3.0",
+    "@types/node": "^25.9.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0"
   },

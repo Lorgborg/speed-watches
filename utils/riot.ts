@@ -1,4 +1,5 @@
-import axios, { Axios, AxiosResponse } from "axios"
+import axios, { Axios } from "axios"
+import type { AxiosResponse } from "axios";
 
 export default class riotApi {
     private apiKey: string;
@@ -42,8 +43,22 @@ export default class riotApi {
         return this.call(`/lol/champion-mastery/v4/champion-masteries/by-puuid/${id}/top`, "sg2")
     }
 
-    public idToMatch(id: string, count:string ="3"): Promise<AxiosResponse>{
-        return this.call(`/lol/match/v5/matches/by-puuid/${id}/ids?start=0&count=${count}`, "sea")
+    /**
+     * league id  to matches
+     *
+     * @param {string} id - the puuid of the player
+     * @param {string} [count=5] - the amount of games that should be checked (default 5)
+     * @param {number} [startTime=0] - The start time to look for use epoch time
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await
+     */
+    public idToMatch(id: string, count:string ="5", startTime:number=0): Promise<AxiosResponse>{
+        let querries:string = "";
+    
+        if(startTime>0){
+            querries += `&startTime=${startTime}`
+        }
+        return this.call(`/lol/match/v5/matches/by-puuid/${id}/ids?start=0&count=${count}${querries}`, "sea")
     }
 
     public matchIdToMatches(matchId: string): Promise<AxiosResponse>{

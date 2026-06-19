@@ -1,91 +1,87 @@
-import { Schema, model, connect, Document, disconnect } from 'mongoose';
+import postgres from 'postgres';
 import Participant from "./utils/participant.ts";
 import riotApi from "./utils/riot.ts"
 import "dotenv/config"
 import getOpponent from "./utils/functions/getOpponent.ts";
+import getPlaying from './utils/functions/getPlaying.ts';
 const riot = new riotApi(process.env["leagueApi"])
+const { postgresuri } = process.env;
 
-interface summonerUser extends Document {
-    puuid: string;
-    user: string;
-    discordId: string;
+// throw error if postgres is undefined
+if(postgresuri == undefined){
+    throw TypeError("postgres uri is undefined. Is your .env existing?");   
 }
-
-const summonerUserSchema = new Schema({
-    puuid: { type: String, required: true},
-    user: { type: String, required: true},
-    discordId: {type: String, required: false}
-})
-
-// save all necessary info to save on api calls needed when querying data
-
-const gameSchema = new Schema({
-    puuid: { type: String, required: true},
-    matchId: { type: String, required: true},
-    championPlayed: { type: String, required: true},
-    championFighting: { type: String, required: true },
-    laningWith: { type: String, required: false},
-    role: { type: String, required: true},
-    KDA: { type: String, required: true},
-    performanceMetrics: { type: String, required: false },
-    isWin: { type: Boolean, required: true },
-    gameLength: {type: Number, required: true },
-    champComposition: {type: Array<String>, required: true}
-})
-
-const summonerUserModel = model<summonerUser>("summonerUser", summonerUserSchema)
-const gameModel = model("game", gameSchema)
+const sql = postgres(postgresuri);
 
 console.log("starting game updates...")
 
 async function check() {
-    // try catch for getting games
-    try {
-        console.log("updating games...")
-        if(process.env["mongoUri"] == undefined){
-            throw("no mongo uri, check your .env")
-        }
-        await connect(process.env["mongoUri"].replace("?", "league?"))
-        const summoners = summonerUserModel.find()
+    // gets all users within database
+    const users = await sql`
+    SELECT * FROM users;
+    `
+    // gets the epoch time for 5 minutes ago and logs time point
+    const minutesAgo = new Date().getTime() - 5 * 60000
+    const epochTime = Math.floor(new Date(minutesAgo).getTime()/1000);
+    console.log(`looking for data since ${new Date(epochTime*1000).toLocaleString()}`);
 
-        for await (const summoner of summoners) {
-            const matches = await riot.idToMatch(summoner.puuid)
-            for (const match of matches.data) {
-                // checks if the game is saved in db
-                const gameQuery = await gameModel.findOne({ matchId: match, puuid: summoner.puuid })
-                
-                // we save it if not found
-                if(gameQuery == null){
-                    console.log("saving game with id: " + match)
-                    const matchDetails = await riot.matchIdToMatches(match)
-                    const participants: Participant[] = matchDetails.data.info.participants
-                    // saves to database
-                    for(const participant of participants){
-                        if(participant.puuid == summoner.puuid){
-                            const saving = await gameModel.create({
-                                puuid: summoner.puuid,
-                                matchId: match,
-                                championPlayed: participant.championName,
-                                championFighting: getOpponent(participants, summoner.puuid),
-                                laningWith: undefined,
-                                role: participant.teamPosition,
-                                KDA: `${participant.kills}/${participant.deaths}/${participant.assists}`,
-                                performanceMetrics: undefined,
-                                isWin: participant.win,
-                                gameLength: participant.timePlayed,
-                                champComposition: participants.map(({ championName, teamPosition }) => ({ championName, teamPosition }))
-                            })
-                            console.log(`saving ${saving.puuid} with`)
-                        }
-                    }
+    // searches for games played for each user within last 5 minutes
+    for(const user of users) {
+        // checks games played within the last 5 minutes
+        const gamesPlayed = await riot.idToMatch(user.puuid,"5",epochTime) // beyonce, 5, 29 days: array
+        for(const gameId of gamesPlayed.data) {
+            const game = (await riot.matchIdToMatches(gameId)).data;
+            const info = game.info
+            const participants: Participant[] = game.info.participants
+            const participant = getPlaying(participants, user.puuid)
+
+            if(participant == null) {
+                break;
+            }
+
+            const compositeId = `${gameId}-${user.puuid}`;
+            const kda = `${participant.kills}/${participant.deaths}/${participant.assists}`;
+            const save = sql`
+                INSERT INTO GAMES (
+                    id,
+                    puuid,
+                    match_id,
+                    champion_played,
+                    champion_fighting,
+                    role,
+                    kda,
+                    is_win,
+                    game_length,
+                    champ_composition,
+                    info
+                )
+                values (
+                    ${compositeId},
+                    ${user.puuid},
+                    ${gameId},
+                    ${participant.championName},
+                    ${getOpponent(participants, user.puuid)},
+                    ${participant.role},
+                    ${kda},
+                    ${participant.win},
+                    ${participant.timePlayed},
+                    ${sql.json(participants.map(({ championName, teamPosition }) => ({ championName, teamPosition })))},
+                    ${sql.json(info)}
+                )
+                returning *
+            `
+
+            try {
+                await save.execute()
+            } catch(e: any) {
+                console.log("Error code:", e?.code, "Error:", e?.message);
+                if (e?.code === '23505') {
+                    console.log(`Game ${compositeId} already exists, skipping.`);
+                    continue;
                 }
             }
+            console.log(`succesfully save`)
         }
-        console.log("finished updating games");
-    } catch(e) {
-        console.log(`error: ${e}`)
-    } finally {
-        disconnect()
     }
 }
 
@@ -93,4 +89,3 @@ check()
 
 setInterval(check, 5 * 60 * 1000) // runs 5 minutes
 
-// temporary endpoint

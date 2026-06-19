@@ -3,10 +3,11 @@
         "module": "nodenext", // or ES2015, ES2020
         "moduleResolution": "nodenext",
         "allowImportingTsExtensions": true,
-        "noEmit": true
+        "noEmit": true,
+        "types": ["node"]
     },
     "ts-node": {
         // Tell ts-node CLI to install the --loader automatically
-        "esm": true
+        "esm": true,
     }
 }
