@@ -15,6 +15,7 @@
     "tsx": "^4.21.0"
   },
   "scripts": {
-    "start": "npx tsx index.ts"
+    "start": "npx tsx index.ts",
+    "api": "npx tsx ./api/index.ts"
   }
 }
