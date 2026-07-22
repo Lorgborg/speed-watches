@@ -18,6 +18,7 @@ export default class riotApi {
                 "X-Riot-Token": this.apiKey
             }
         })
+        console.log(root+path)
         return res
     }
 
@@ -30,13 +31,23 @@ export default class riotApi {
      *
      * @returns {Promise<AxiosResponse>} res - Do not forget to await
      */
-    public summonerNameToId(name: string, id: string): Promise<AxiosResponse>{
-        let usedId: string = id
-        if(id.startsWith("#")) {
-            const sliced: string[] = id.split("#")
-            usedId = sliced[1]
+    public summonerNameToId(name: string, id?: string): Promise<AxiosResponse> {
+        let gameName: string = name
+        let tagLine: string = id ?? ""
+
+        if (name.includes("#")) {
+            const sliced: string[] = name.split("#")
+            gameName = sliced[0]
+            tagLine = sliced[1]
+        } else if (id?.startsWith("#")) {
+            tagLine = id.split("#")[1]
         }
-        return this.call(`/riot/account/v1/accounts/by-riot-id/${name}/${usedId}`);
+
+        if (!tagLine) {
+            throw new Error("No tagLine provided — pass it via `name` (e.g. 'Name#TAG') or the `id` parameter.")
+        }
+
+        return this.call(`/riot/account/v1/accounts/by-riot-id/${gameName}/${tagLine}`);
     }
 
     public idToHighestMastery(id: string): Promise<AxiosResponse> {
@@ -48,17 +59,22 @@ export default class riotApi {
      *
      * @param {string} id - the puuid of the player
      * @param {string} [count=5] - the amount of games that should be checked (default 5)
-     * @param {number} [startTime=0] - The start time to look for use epoch time
+     * @param {number} [endTime=0] - The start time to look for use epoch time. From clause
+     * @param {number} [startTime=0] - The end time to look for use epoch time. To clause
+     * @param {number} [start=0] - The start count
      *
      * @returns {Promise<AxiosResponse>} res - Do not forget to await
      */
-    public idToMatch(id: string, count:string ="5", startTime:number=0): Promise<AxiosResponse>{
+    public idToMatch(id: string, count:string ="5", endTime:number=0, startTime:number=0, start:number=0): Promise<AxiosResponse>{
         let querries:string = "";
     
-        if(startTime>0){
+        if (startTime>0){
             querries += `&startTime=${startTime}`
+        } 
+        if (endTime>0) {
+            querries += `&endTime=${endTime}`
         }
-        return this.call(`/lol/match/v5/matches/by-puuid/${id}/ids?start=0&count=${count}${querries}`, "sea")
+        return this.call(`/lol/match/v5/matches/by-puuid/${id}/ids?start=${start}&count=${count}${querries}`, "sea")
     }
 
     public matchIdToMatches(matchId: string): Promise<AxiosResponse>{

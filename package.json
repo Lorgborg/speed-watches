@@ -16,6 +16,6 @@
   },
   "scripts": {
     "start": "npx tsx index.ts",
-    "api": "npx tsx ./api/index.ts"
+    "api": "npx tsx ./api/app.ts"
   }
 }

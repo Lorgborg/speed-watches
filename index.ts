@@ -61,7 +61,7 @@ async function check() {
                     ${gameId},
                     ${participant.championName},
                     ${getOpponent(participants, user.puuid)},
-                    ${participant.role},
+                    ${participant.teamPosition},
                     ${kda},
                     ${participant.win},
                     ${participant.timePlayed},
@@ -70,7 +70,6 @@ async function check() {
                 )
                 returning *
             `
-
             try {
                 await save.execute()
             } catch(e: any) {
@@ -88,4 +87,3 @@ async function check() {
 check()
 
 setInterval(check, 5 * 60 * 1000) // runs 5 minutes
-
