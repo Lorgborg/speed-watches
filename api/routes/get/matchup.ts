@@ -1,10 +1,10 @@
 import { Router } from "express"
 const router = Router()
 import { sql, riot } from "../../util/services.ts"
+import { getQueries } from "../../util/inputValidation.ts"
 
 router.get('/get/matchup', async (req, res) => {
-    const { championFighting, championPlayed, username, discordId, puuid, summonerName } = req.body ?? {}
-
+    const { championFighting, championPlayed, username, discordId, puuid, summonerName } = getQueries(req.query) ?? {}
     if (!championFighting || !championPlayed) {
         return res.status(400).json({ error: 'championFighting and championPlayed are required' })
     }

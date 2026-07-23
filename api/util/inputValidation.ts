@@ -23,3 +23,14 @@ export async function checkPuuid(puuid: string): Promise<AxiosResponse | undefin
         }
     }
 }
+
+export function getQueries<T extends Record<string, unknown>>(
+    query: T
+): { [K in keyof T]: string | undefined } {
+    const result = {} as { [K in keyof T]: string | undefined } 
+    for (const key in query) {
+        const value = query[key]
+        result[key] = typeof value === "string" ? value : undefined
+    }
+    return result
+}
