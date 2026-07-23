@@ -1,0 +1,47 @@
+openapi: 3.1.0
+servers:
+  - url: http://localhost:3000/api/
+    description: Production server
+info:
+  title: Speed-watches
+  description: This API is for G2R members to take notes on the matchups they may encounter on league of legends. Note that a **bypass is required to access the api**
+  version: 1.0.0
+components:
+  securitySchemes:
+    VercelAuth:
+      type: string
+      in: header
+      name: x-vercel-protection-bypass
+paths:
+  /speedwatches/match/check:
+    get:
+      summary: /match/check
+      description: updates the database by checking the past 5 games of users in summonerusers collection.
+      parameters: none
+      responses:
+        "200": saved
+  /get/matchup:
+    get:
+      summary: /get/matcup
+      description: Returns a list of note objects filtered through the request body. Each request body can be null, just ensure at least 1 value is filled
+      parameters:
+      - name: username
+        in: query
+        schema:
+          type: string
+          nullable: true
+          example: "rin"
+      - name: championPlayed
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+          example: "Sion"
+      - name: championFighting
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+          example: "Yone"

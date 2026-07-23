@@ -1,0 +1,29 @@
+{
+  "$schema": "https://registry.scalar.com/@scalar/schemas/config",
+  "scalar": "2.0.0",
+  "info": {
+    "title": "speed-watches",
+    "description": "Documentation for speed-watches"
+  },
+  "siteConfig": {
+    "subdomain": "speed-watches"
+  },
+  "navigation": {
+    "routes": {
+      "/": {
+        "type": "group",
+        "title": "Documentation",
+        "children": {
+          "/": {
+            "title": "Speed Watches",
+            "type": "openapi",
+            "mode": "flat",
+            "singlePage": false,
+            "showInSidebar": true,
+            "filepath": "documentation.yaml"
+          }
+        }
+      }
+    }
+  }
+}
