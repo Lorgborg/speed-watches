@@ -2,9 +2,20 @@ import { Router } from "express"
 const router = Router()
 import { sql, riot } from "../../util/services.ts"
 import { getQueries } from "../../util/inputValidation.ts"
+import { z } from "zod"
+
+const MatchUpWRQuerySchema = z.object({
+    championPlayed: z.string(),
+    puuid: z.string().optional(),
+    championFighting: z.string(),
+    role: z.string().optional(),
+    summonerName: z.string().optional(),
+    discordId: z.string().optional(),
+    username: z.string().optional()
+})
 
 router.get('/get/matchup', async (req, res) => {
-    const { championFighting, championPlayed, username, discordId, puuid, summonerName } = getQueries(req.query) ?? {}
+    const { championFighting, championPlayed, username, discordId, puuid, summonerName } = getQueries(req.query, MatchUpWRQuerySchema) ?? {}
     if (!championFighting || !championPlayed) {
         return res.status(400).json({ error: 'championFighting and championPlayed are required' })
     }

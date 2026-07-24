@@ -1,6 +1,7 @@
 import type { AxiosResponse } from "axios";
 import riotApi from "../../utils/riot.ts";
 import "dotenv/config"
+import type { ParsedQs } from "qs"
 
 const { leagueApi } = process.env
 
@@ -24,13 +25,11 @@ export async function checkPuuid(puuid: string): Promise<AxiosResponse | undefin
     }
 }
 
-export function getQueries<T extends Record<string, unknown>>(
-    query: T
-): { [K in keyof T]: string | undefined } {
-    const result = {} as { [K in keyof T]: string | undefined } 
-    for (const key in query) {
-        const value = query[key]
-        result[key] = typeof value === "string" ? value : undefined
-    }
-    return result
+import { z } from "zod"
+
+export function getQueries<T extends z.ZodTypeAny>(
+    query: ParsedQs,
+    schema: T
+): z.infer<T> {
+    return schema.parse(query)
 }
