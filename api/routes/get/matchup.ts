@@ -5,9 +5,9 @@ import { getQueries } from "../../util/inputValidation.ts"
 import { z } from "zod"
 
 const MatchUpWRQuerySchema = z.object({
-    championPlayed: z.string(),
+    championPlayed: z.string().optional(),
     puuid: z.string().optional(),
-    championFighting: z.string(),
+    championFighting: z.string().optional(),
     role: z.string().optional(),
     summonerName: z.string().optional(),
     discordId: z.string().optional(),
@@ -16,20 +16,15 @@ const MatchUpWRQuerySchema = z.object({
 
 router.get('/get/matchup', async (req, res) => {
     const { championFighting, championPlayed, username, discordId, puuid, summonerName } = getQueries(req.query, MatchUpWRQuerySchema) ?? {}
-    if (!championFighting || !championPlayed) {
-        return res.status(400).json({ error: 'championFighting and championPlayed are required' })
-    }
 
-    // base conditions that are always present
-    const conditions = [
-        sql`champion_fighting = ${championFighting}`,
-        sql`champion_played = ${championPlayed}`,
-    ]
+    const conditions = []
 
     // only add a condition if the field was actually provided
-    if (username !== undefined) conditions.push(sql`username = ${username}`)
-    if (discordId !== undefined) conditions.push(sql`discordid = ${discordId}`)
-    if (puuid !== undefined) conditions.push(sql`puuid = ${puuid}`)
+    if (championFighting !== undefined) conditions.push(sql`notes.champion_fighting = ${championFighting}`)
+    if (championPlayed !== undefined) conditions.push(sql`notes.champion_played = ${championPlayed}`,)
+    if (username !== undefined) conditions.push(sql`users.username = ${username}`)
+    if (discordId !== undefined) conditions.push(sql`users.discordid = ${discordId}`)
+    if (puuid !== undefined) conditions.push(sql`games.puuid = ${puuid}`)
     if (summonerName !== undefined){
         const puuid = (await riot.summonerNameToId(summonerName)).data.puuid
         // error handling on incorrect name
@@ -40,8 +35,20 @@ router.get('/get/matchup', async (req, res) => {
     const whereClause = conditions.reduce((acc, cur) => sql`${acc} AND ${cur}`)
 
     try {
-        const rows = await sql`select * from notes join users on notes.puuid=users.puuid where ${whereClause}`
-
+        const rows = await sql`
+            select users.username, users.puuid, notes.champion_played, notes.champion_fighting, notes.role, notes.notes,
+                count(*) filter (where is_win = true) as wins,
+                count(*) filter (where is_win = false) as lose
+            from games
+            join users on games.puuid = users.puuid
+            join notes on notes.champion_fighting = games.champion_fighting
+                    and notes.champion_played = games.champion_played
+                    and notes.role = games.role
+            and notes.puuid = games.puuid 
+            where ${whereClause}
+            group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.puuid, users.username
+            order by wins desc;
+            `
         if (rows.length === 0) {
             return res.status(404).json({ error: 'No matching notes found' })
         }

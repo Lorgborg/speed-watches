@@ -9,14 +9,19 @@
     "mongodb": "^7.1.0",
     "mongoose": "^8.23.0",
     "postgres": "^3.4.9",
-    "postman2openapi": "^1.2.1"
+    "postman2openapi": "^1.2.1",
+    "swagger-ui-express": "^5.0.1",
+    "yamljs": "^0.3.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.2",
+    "@types/swagger-ui-express": "^4.1.8",
+    "@types/yamljs": "^0.2.34",
     "ts-node": "^10.9.2",
-    "tsx": "^4.21.0"
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
   },
   "scripts": {
     "start": "npx tsx index.ts",

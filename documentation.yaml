@@ -6,17 +6,58 @@ info:
   title: Speed-watches
   description: This API is for G2R members to take notes on the matchups they may encounter on league of legends. Note that a **bypass is required to access the api**
   version: 1.0.0
+tags:
+  - name: Get
+    description: Endpoints for retrieving matchup notes
+  - name: Push
+    description: Endpoints for creating or updating matchup notes
 components:
-  securitySchemes:
-    VercelAuth:
-      type: string
-      in: header
-      name: x-vercel-protection-bypass
+  schemas:
+    Matchup:
+      type: object
+      properties:
+        puuid:
+          type: string
+          example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
+        championFighting:
+          type: string
+          example: "Yone"
+        championPlayed:
+          type: string
+          example: "Renekton"
+        matchIds:
+          type: array
+          items:
+            type: string
+          example: ["SG2_161017792", "SG2_138469723"]
+        pushing:
+          type: string
+          nullable: true
+        teamFighting:
+          type: string
+          nullable: true
+        laning:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        role:
+          type: string
+          example: "TOP"
+        username:
+          type: string
+          example: "rin"
+        discordId:
+          type: string
+          example: "400599101353492480"
 paths:
   /get/matchup:
     get:
-      summary: /get/matcup
-      description: Returns a list of note objects filtered through the request body. Each request body can be null, just ensure at least 1 value is filled
+      tags:
+        - Get
+      summary: /get/matchup
+      description: Returns a list of note objects filtered through the provided query parameters
       parameters:
       - name: username
         in: query
@@ -38,3 +79,128 @@ paths:
           type: string
           nullable: false
           example: "Yone"
+      responses:
+        "200":
+          description: "Query Found"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Matchup"
+        "404":
+          description: "No matching notes found"
+
+  /get/user:
+    get:
+      tags:
+        - Get
+      summary: /get/user
+      description: Returns all matchup notes recorded for a given user, optionally filtered by role
+      parameters:
+      - name: username
+        in: query
+        required: true
+        schema:
+          type: string
+          nullable: false
+          example: "rin"
+      - name: role
+        in: query
+        schema:
+          type: string
+          nullable: true
+          example: "TOP"
+      responses:
+        "200":
+          description: "Query Found"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Matchup"
+        "404":
+          description: "User not found or has no notes"
+
+  /get/matchupWR:
+    get:
+      tags:
+      - Get
+      summary: /matchupWR
+      description: gets the win ratee percentage of a user based on the matchup
+      parameters:
+      - name: discordId
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+      
+      - name: championPlayed
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+
+
+  /push/matchup:
+    post:
+      tags:
+        - Push
+      summary: /push/matchup
+      description: Creates or updates a matchup note for the given champion pairing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - puuid
+                - championPlayed
+                - championFighting
+                - username
+                - role
+              properties:
+                puuid:
+                  type: string
+                  example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
+                championPlayed:
+                  type: string
+                  example: "Renekton"
+                championFighting:
+                  type: string
+                  example: "Yone"
+                username:
+                  type: string
+                  example: "rin"
+                role:
+                  type: string
+                  example: "TOP"
+                notes:
+                  type: string
+                  nullable: true
+                  example: "Punish early trades before level 3, watch for all-in at level 6"
+                laning:
+                  type: string
+                  nullable: true
+                teamFighting:
+                  type: string
+                  nullable: true
+      responses:
+        "201":
+          description: "Note created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Matchup"
+        "200":
+          description: "Existing note updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Matchup"
+        "400":
+          description: "Missing required fields"

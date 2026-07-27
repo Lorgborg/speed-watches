@@ -58,11 +58,11 @@ async function processGame(gameId: string, puuid: string): Promise<boolean> {
 }
 
 async function repeat() {
-    const users = await sql`SELECT * FROM users where backfill_complete='false';`
+    const users = await sql`SELECT * FROM users;`
     const dateLimit = Math.floor((Date.now() - 36 * 30 * 24 * 60 * 60_000) / 1000);
 
     for (const user of users) {
-        const limit = 1000
+        const limit = 200
         const saved = await sql`select match_id from games where puuid=${user.puuid}`
         let offline: Array<string> = saved.map(match => match.match_id)
 

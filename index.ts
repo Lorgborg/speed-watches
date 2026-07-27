@@ -42,34 +42,19 @@ async function check() {
             const compositeId = `${gameId}-${user.puuid}`;
             const kda = `${participant.kills}/${participant.deaths}/${participant.assists}`;
             const save = sql`
-                INSERT INTO GAMES (
-                    id,
-                    puuid,
-                    match_id,
-                    champion_played,
-                    champion_fighting,
-                    role,
-                    kda,
-                    is_win,
-                    game_length,
-                    champ_composition,
-                    info
-                )
-                values (
-                    ${compositeId},
-                    ${user.puuid},
-                    ${gameId},
-                    ${participant.championName},
-                    ${getOpponent(participants, user.puuid)},
-                    ${participant.teamPosition},
-                    ${kda},
-                    ${participant.win},
-                    ${participant.timePlayed},
-                    ${sql.json(participants.map(({ championName, teamPosition }) => ({ championName, teamPosition })))},
-                    ${sql.json(info)}
-                )
-                returning *
-            `
+                    INSERT INTO GAMES (
+                        id, puuid, match_id, champion_played, champion_fighting,
+                        role, kda, is_win, game_length, champ_composition, info
+                    )
+                    values (
+                        ${compositeId}, ${user.puuid}, ${gameId}, ${participant.championName},
+                        ${getOpponent(participants, user.puuid)}, ${participant.teamPosition},
+                        ${kda}, ${participant.win}, ${participant.timePlayed},
+                        ${sql.json(participants.map(({ championName, teamPosition }) => ({ championName, teamPosition })))},
+                        ${sql.json(info)}
+                    )
+                    returning *
+                `;
             try {
                 await save.execute()
             } catch(e: any) {
