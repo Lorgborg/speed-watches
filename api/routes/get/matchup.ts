@@ -15,11 +15,24 @@ const MatchUpWRQuerySchema = z.object({
 })
 
 router.get('/get/matchup', async (req, res) => {
-    const { championFighting, championPlayed, username, discordId, puuid, summonerName } = getQueries(req.query, MatchUpWRQuerySchema) ?? {}
+    let championFighting, championPlayed, username, discordId, puuid, summonerName
+
+    try {
+        ({ championFighting, championPlayed, username, discordId, puuid, summonerName } =
+            getQueries(req.query, MatchUpWRQuerySchema) ?? {})
+    } catch (e: any) {
+        if (e instanceof z.ZodError) {
+            return res.status(400).json({
+                error: 'Invalid query parameters',
+                issues: e.issues.map(i => ({ path: i.path.join('.'), message: i.message }))
+            })
+        }
+        console.error('Query parsing failed:', e)
+        return res.status(500).json({ error: 'Unexpected query parsing error' })
+    }
 
     const conditions = []
 
-    // only add a condition if the field was actually provided
     if (championFighting !== undefined) conditions.push(sql`notes.champion_fighting = ${championFighting}`)
     if (championPlayed !== undefined) conditions.push(sql`notes.champion_played = ${championPlayed}`,)
     if (username !== undefined) conditions.push(sql`users.username = ${username}`)
@@ -27,11 +40,13 @@ router.get('/get/matchup', async (req, res) => {
     if (puuid !== undefined) conditions.push(sql`games.puuid = ${puuid}`)
     if (summonerName !== undefined){
         const puuid = (await riot.summonerNameToId(summonerName)).data.puuid
-        // error handling on incorrect name
         conditions.push(sql`puuid=${puuid}`)
     }
 
-    // combine fragments with AND — this is the standard postgres.js composition trick
+    if (conditions.length === 0) {
+        return res.status(400).json({ error: 'At least one query parameter is required' })
+    }
+
     const whereClause = conditions.reduce((acc, cur) => sql`${acc} AND ${cur}`)
 
     try {
@@ -57,13 +72,12 @@ router.get('/get/matchup', async (req, res) => {
     } catch (e: any) {
         console.error('Query failed:', e)
 
-        // postgres.js attaches the Postgres error code to e.code
         switch (e.code) {
-            case '22P02': // invalid_text_representation, e.g. bad UUID/int cast
+            case '22P02':
                 return res.status(400).json({ error: 'Invalid value format' })
-            case '42703': // undefined_column
+            case '42703':
                 return res.status(500).json({ error: 'Server query error (bad column)' })
-            case '23505': // unique_violation (not relevant here, but common elsewhere)
+            case '23505':
                 return res.status(409).json({ error: 'Conflict' })
             default:
                 return res.status(500).json({ error: 'Unexpected database error' })

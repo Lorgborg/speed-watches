@@ -1,5 +1,5 @@
 # speed-watches
-A league api webhook that saves game information to mongodb
+A league api webhook that saves game information to a postgresql database. The API
 
 ## How does speed-watches work?
 Speed-watches contains an endpoint that makes an api call to the [league api](https://developer.riotgames.com/apis) and saves game information depending on if the game is already saved within the db or not.

@@ -54,45 +54,234 @@ components:
           type: string
           example: "400599101353492480"
 paths:
+  
   /get/matchup:
     get:
+      summary: Get matchup notes
+      description: >
+        Retrieves matchup notes filtered by any combination of champion played,
+        champion fighting, role, or user identity (username, discord ID, puuid,
+        or summoner name). At least one query parameter is required.
       tags:
         - Get
-      summary: /get/matchup
-      description: Returns a list of note objects filtered through the provided query parameters
       parameters:
-      - name: username
-        in: query
-        schema:
-          type: string
-          nullable: true
-          example: "rin"
-      - name: championPlayed
-        in: query
-        required: true
-        schema:
-          type: string
-          nullable: false
-          example: "Sion"
-      - name: championFighting
-        in: query
-        required: true
-        schema:
-          type: string
-          nullable: false
-          example: "Yone"
+        - name: championPlayed
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Champion the note author was playing
+        - name: championFighting
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opposing champion in the matchup
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Lane/role for the matchup
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot PUUID of the note author
+        - name: summonerName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Summoner name, resolved to a PUUID via the Riot API
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Discord ID of the note author
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+          description: G2R username of the note author
       responses:
-        "200":
-          description: "Query Found"
+        '200':
+          description: Matching matchup notes with aggregated win/loss counts
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Matchup"
-        "404":
-          description: "No matching notes found"
+                  type: object
+                  properties:
+                    username:
+                      type: string
+                    puuid:
+                      type: string
+                    champion_played:
+                      type: string
+                    champion_fighting:
+                      type: string
+                    role:
+                      type: string
+                    notes:
+                      type: string
+                    wins:
+                      type: integer
+                      description: Count of recorded wins for this matchup
+                    lose:
+                      type: integer
+                      description: Count of recorded losses for this matchup
+        '400':
+          description: Invalid or missing query parameters
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        message:
+                          type: string
+        '404':
+          description: No matching notes found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: No matching notes found
+        '409':
+          description: Conflict (unique constraint violation)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+        '500':
+          description: Unexpected server or database error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
 
+  /get/totalWR:
+    get:
+      summary: Get total win rate for a matchup
+      description: >
+        Aggregates win/loss counts for matchups filtered by champion played,
+        champion fighting, role, discord ID, or puuid, and returns an overall
+        win rate. Either puuid or discordId is required.
+      tags:
+        - Get
+      parameters:
+        - name: championPlayed
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Champion the player was playing
+        - name: championFighting
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opposing champion in the matchup
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Lane/role for the matchup
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot PUUID. Either this or discordId is required.
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Discord ID. Either this or puuid is required.
+        - name: isWinFirst
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: If "true", sorts results by wins descending; otherwise sorts by losses descending.
+      responses:
+        '200':
+          description: Aggregated win/loss breakdown per matchup, plus overall totals and win rate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  withWinRate:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        champion_played:
+                          type: string
+                        champion_fighting:
+                          type: string
+                        role:
+                          type: string
+                        wins:
+                          type: string
+                          description: Win count (returned as string from Postgres COUNT)
+                        loss:
+                          type: string
+                          description: Loss count (returned as string from Postgres COUNT)
+                        winRate:
+                          type: number
+                          format: float
+                          description: wins / (wins + loss) for this specific matchup
+                  wr:
+                    type: integer
+                    description: Overall win rate percentage across all matched rows, rounded
+                  totalWins:
+                    type: integer
+                  totalLoss:
+                    type: integer
+        '404':
+          description: Neither puuid nor discordId was provided
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: either puuid or discordId must be filled
+        '409':
+          description: Invalid query parameters (Zod validation failure) or other request-time error
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                example: ["Error: Invalid option: expected one of \"true\"|\"false\""]
+  
   /get/user:
     get:
       tags:
@@ -124,28 +313,6 @@ paths:
                   $ref: "#/components/schemas/Matchup"
         "404":
           description: "User not found or has no notes"
-
-  /get/matchupWR:
-    get:
-      tags:
-      - Get
-      summary: /matchupWR
-      description: gets the win ratee percentage of a user based on the matchup
-      parameters:
-      - name: discordId
-        in: query
-        required: false
-        schema:
-          type: string
-          nullable: true
-      
-      - name: championPlayed
-        in: query
-        required: false
-        schema:
-          type: string
-          nullable: true
-
 
   /push/matchup:
     post:
