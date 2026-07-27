@@ -1,19 +1,12 @@
 # speed-watches
-A league api webhook that saves game information to a postgresql database. The API
-
-## How does speed-watches work?
-Speed-watches contains an endpoint that makes an api call to the [league api](https://developer.riotgames.com/apis) and saves game information depending on if the game is already saved within the db or not.
-
-The program is deployed to vercel, which has a set cron-job running the endpoint that checks a for a list players and the games they have recently played. If any of these games are missing in the database, the missing game is added. 
+A league api pseudo-webhook that saves game information to a postgresql database. This project includes an API please view the [docs](https://server-pc.tail66b2ee.ts.net/docs/) for more information.
 
 ## What is speed-watches for?
-speed watches creates a mongodb database containing the information of players' games. This information is connected to an entity that users can add notes to, which can be querried by other users if the matchup is favorable or not. 
-
-## How do I use the database?
-Ask me for the connection uri and use mongodb to access data. Speedwatches does not double as an api for the created database, but it can be if there is demand for it to be. 
+Speed-watches is a community driven project, allowing users to add notes to matchups they have had plenty of experiences with before. On top of that, the data saved into the postgresql database gives players access to a more complete dataset on their game history.  
 
 ## How do I contribute?
 To contribute, contact me on discord: lorgborg. There's lots to contribute to too! Examples are:
-- front-end distribution (we'll need LOTS of help here!)
-- transforming speed-watches as an api for the database
+- front-end distribution, currently the project is only hooked up to a discord bot
+- API endpoints
 - documentation
+- builder for postgresql query from the received payload of an api call 
