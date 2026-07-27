@@ -1,5 +1,7 @@
 openapi: 3.1.0
 servers:
+  - url: https://server-pc.tail66b2ee.ts.net/api/
+    description: api production server
   - url: http://localhost:3000/api/
     description: Local dev server
 info:
