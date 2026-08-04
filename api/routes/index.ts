@@ -4,7 +4,7 @@ import path from 'path'
 
 const router = Router()
 
-const methodFolders = ['get', 'post'] as const
+const methodFolders = ['get', 'post', 'remove', 'update'] as const
 
 for (const method of methodFolders) {
     const dirPath = path.join(__dirname, method)

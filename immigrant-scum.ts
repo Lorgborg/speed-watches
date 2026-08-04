@@ -4,9 +4,9 @@ import riotApi from "./utils/riot.ts"
 import "dotenv/config"
 import getOpponent from "./utils/functions/getOpponent.ts";
 import getPlaying from './utils/functions/getPlaying.ts';
-import { callRiot } from "./utils/riotRateLimit.ts";
+import { callRiot } from "./utils/riotQueue.ts";
 
-const riot = new riotApi(process.env["leagueApi"])
+const riot = new riotApi(process.env["aggregatorApi"])
 const { postgresuri } = process.env;
 
 if (postgresuri == undefined) {
@@ -17,7 +17,7 @@ const sql = postgres(postgresuri);
 async function processGame(gameId: string, puuid: string): Promise<boolean> {
     const compositeId = `${gameId}-${puuid}`;
 
-    const game = (await callRiot(() => riot.matchIdToMatches(gameId))).data;
+    const game = await callRiot(riotApi.prototype.matchIdToMatches, gameId);
     const info = game.info;
     const participants: Participant[] = game.info.participants;
     const participant = getPlaying(participants, puuid);
@@ -46,7 +46,7 @@ async function processGame(gameId: string, puuid: string): Promise<boolean> {
         await save.execute();
         console.log(`${puuid} for ${new Date(info.gameCreation).toLocaleDateString()} matchId of ${gameId}`);
     } catch (e: any) {
-        if (e?.code === '23505') {
+        if (e?.code === '23505') { 
             console.log(`Game ${compositeId} already exists, skipping.`);
             console.log(e)
             return true;
@@ -57,53 +57,84 @@ async function processGame(gameId: string, puuid: string): Promise<boolean> {
     return false;
 }
 
-async function repeat() {
-    const users = await sql`SELECT * FROM users;`
-    const dateLimit = Math.floor((Date.now() - 36 * 30 * 24 * 60 * 60_000) / 1000);
+export async function onboardGames(puuid: string, summonerName: string) {
+    console.log(`onboarding for ${summonerName}`);
+    const searchPuuid = (await callRiot(riotApi.prototype.summonerNameToId, summonerName)).puuid
+    // Fetch the user row, including the current cursor
+    const user = (await sql`
+        SELECT * FROM users WHERE puuid = ${puuid}
+    `)[0];
 
-    for (const user of users) {
-        const limit = 200
-        const saved = await sql`select match_id from games where puuid=${user.puuid}`
-        let offline: Array<string> = saved.map(match => match.match_id)
+    if (!user) {
+        console.log(`User ${puuid} not found`);
+        return;
+    }
 
-        if(offline.length >= limit) {
-            console.log(`already saved ${limit} games for player ${user.username}`)
+    // If already complete, skip
+    if (user.backfill_complete === true) {
+        console.log(`User ${user.username} already fully backfilled`);
+        return;
+    }
+
+    const limit = 1000;
+    // Start from the saved cursor, default to 0
+    let currentOffset = user.back_fillcursor ?? 0;
+
+    // Remove the invalid filter on games.backfill_complete
+    const saved = await sql`SELECT match_id FROM games WHERE puuid = ${puuid}`;
+    const offline = saved.map(match => match.match_id);
+    const offlineSet = new Set(offline);
+
+    // Loop until we hit the hard limit or there are no more matches
+    for (let i = currentOffset; i < limit; i += 100) {
+        let online: Array<string> = [];
+        try {
+            online = await callRiot(riotApi.prototype.idToMatch, searchPuuid, "100", 0, 0, i);
+        } catch (e: any) {
+            console.log(`[FATAL PAGE FETCH] user=${user.username} offset=${i}:`, e?.response?.status, e?.message);
+            // Do NOT update cursor here – next run will retry from the same offset
             break;
         }
 
-        let matches: Array<string> = []
+        console.log(`start=${i}, got ${online.length} matches`);
 
-        for(let i = 0; i < limit; i+=100) {   
-            const online = (await callRiot(() => riot.idToMatch(user.puuid,"100",0,dateLimit,i), 12)).data
-            console.log(`start=${i}, got ${online.length} matches`)
-            if(online.length===0) {
-                console.log("stopped at " + i)
-                const save = await sql`update users set backfill_complete='true' where puuid=${user.puuid}`
-                break;
-            }
-            for(const match of online) {
-                matches.push(match)
-            }
+        if (online.length === 0) {
+            // No more matches → mark user as fully backfilled
+            await sql`
+                UPDATE users
+                SET backfill_complete = true, back_fillcursor = ${i}
+                WHERE puuid = ${user.puuid}
+            `;
+            console.log(`Backfill complete for ${user.username}`);
+            break;
         }
 
-        const onlineSet = new Set(matches)
-        const offlineSet = new Set(offline)
+        const onlineSet = new Set(online);
+        const missingGames = onlineSet.difference(offlineSet);
+        console.log(`${user.username} has ${missingGames.size} missing games in this batch`);
 
-        const missingGames = onlineSet.difference(offlineSet)
-        console.log(`${user.username} has ${missingGames.size} missing games`)
-
-        for(const game of Array.from(missingGames)) {
+        // Process all missing games for this batch
+        for (const game of Array.from(missingGames)) {
             try {
                 await processGame(game, user.puuid);
             } catch (e) {
-                // maxRetries exhausted on a 429, or some other unrecoverable error —
-                // don't let it kill the whole run; move on to the next user, and
-                // whatever cursor was last saved is where this user resumes from
-                console.log(`stopping ${user.username} early due to error:`, e);
+                // log and continue – processGame already has its own error handling
+                console.log(`Error processing game ${game} for ${user.username}:`, e);
             }
         }
-        console.log(`_____________finished for ${user.username}`)
-    }
-}
 
-repeat()
+        // ✅ CRITICAL: update the cursor AFTER the whole batch is processed
+        await sql`
+            UPDATE users
+            SET back_fillcursor = ${i + 100}
+            WHERE puuid = ${user.puuid}
+        `;
+
+        // If we hit the arbitrary limit, stop here; next run picks up at i+100
+        if (i + 100 >= limit) {
+            console.log(`Reached limit of ${limit} games for ${user.username}`);
+            break;
+        }
+    }
+    console.log(`_____________finished for ${user.username}`);
+}

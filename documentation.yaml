@@ -7,12 +7,16 @@ servers:
 info:
   title: Speed-watches
   description: This API is for G2R members to take notes on the matchups they may encounter on league of legends. Note that a **bypass is required to access the api**
-  version: 1.0.0
+  version: 1.1.0
 tags:
   - name: Get
-    description: Endpoints for retrieving matchup notes
-  - name: Push
-    description: Endpoints for creating or updating matchup notes
+    description: Endpoints for retrieving matchup notes and user data
+  - name: Post
+    description: Endpoints for creating users and matchup/game notes
+  - name: WIP
+    description: >
+      Routes that are registered but not yet functional. Included here so the
+      surface area is visible, but none of these should be relied on yet.
 components:
   schemas:
     Matchup:
@@ -53,8 +57,21 @@ components:
         discordId:
           type: string
           example: "400599101353492480"
+    User:
+      type: object
+      description: A row from the postgres `users` table.
+      properties:
+        username:
+          type: string
+          example: "rin"
+        discordId:
+          type: string
+          example: "400599101353492480"
+        puuid:
+          type: string
+          example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
 paths:
-  
+
   /get/matchup:
     get:
       summary: Get matchup notes
@@ -198,6 +215,12 @@ paths:
           schema:
             type: string
           description: Champion the player was playing
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot PUUID. Either this or discordId is required.
         - name: championFighting
           in: query
           required: false
@@ -210,18 +233,6 @@ paths:
           schema:
             type: string
           description: Lane/role for the matchup
-        - name: puuid
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Riot PUUID. Either this or discordId is required.
-        - name: discordId
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Discord ID. Either this or puuid is required.
         - name: isWinFirst
           in: query
           required: false
@@ -229,6 +240,12 @@ paths:
             type: string
             enum: ["true", "false"]
           description: If "true", sorts results by wins descending; otherwise sorts by losses descending.
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Discord ID. Either this or puuid is required.
       responses:
         '200':
           description: Aggregated win/loss breakdown per matchup, plus overall totals and win rate
@@ -281,45 +298,61 @@ paths:
                 items:
                   type: string
                 example: ["Error: Invalid option: expected one of \"true\"|\"false\""]
-  
+
   /get/user:
     get:
       tags:
         - Get
-      summary: /get/user
-      description: Returns all matchup notes recorded for a given user, optionally filtered by role
+      summary: Get a user by username, puuid, or discord ID
+      description: >
+        Looks up a row from the `users` table. Checked in order of precedence:
+        `username` first, then `puuid`, then `discordId`. If none are provided,
+        no query is run and the response body will be empty.
       parameters:
-      - name: username
-        in: query
-        required: true
-        schema:
-          type: string
-          nullable: false
-          example: "rin"
-      - name: role
-        in: query
-        schema:
-          type: string
-          nullable: true
-          example: "TOP"
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+          description: G2R username. Takes priority over puuid and discordId if provided.
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot PUUID. Validated against the Riot API before querying.
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Discord snowflake ID. Must match `^\d{17,19}$`.
       responses:
         "200":
-          description: "Query Found"
+          description: Matching user row(s)
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Matchup"
-        "404":
-          description: "User not found or has no notes"
+                  $ref: "#/components/schemas/User"
+        "401":
+          description: puuid failed Riot API validation, or discordId is not a valid snowflake format
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error: Discord Id is not a valid format"
 
-  /push/matchup:
+  /post/user:
     post:
       tags:
-        - Push
-      summary: /push/matchup
-      description: Creates or updates a matchup note for the given champion pairing
+        - Post
+      summary: Create a user
+      description: >
+        Creates a row in the `users` table. Either `puuid` or `summonerName`
+        must be provided — if `summonerName` is given, it is resolved to a
+        PUUID via the Riot API before insert.
       requestBody:
         required: true
         content:
@@ -327,49 +360,105 @@ paths:
             schema:
               type: object
               required:
-                - puuid
-                - championPlayed
-                - championFighting
                 - username
-                - role
+                - discordId
               properties:
-                puuid:
-                  type: string
-                  example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
-                championPlayed:
-                  type: string
-                  example: "Renekton"
-                championFighting:
-                  type: string
-                  example: "Yone"
                 username:
                   type: string
                   example: "rin"
-                role:
+                discordId:
                   type: string
-                  example: "TOP"
-                notes:
-                  type: string
-                  nullable: true
-                  example: "Punish early trades before level 3, watch for all-in at level 6"
-                laning:
+                  example: "400599101353492480"
+                puuid:
                   type: string
                   nullable: true
-                teamFighting:
+                  example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
+                summonerName:
                   type: string
                   nullable: true
+                  description: Riot ID (e.g. "Name#TAG"). Resolved to a puuid server-side if provided.
+                  example: "rin#NA1"
       responses:
-        "201":
-          description: "Note created"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Matchup"
         "200":
-          description: "Existing note updated"
+          description: User saved successfully
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: "#/components/schemas/Matchup"
-        "400":
-          description: "Missing required fields"
+                type: string
+                example: "successfully saved"
+        "401":
+          description: Discord ID format invalid, puuid failed Riot API validation, or a required field was missing
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error: Discord Id is not a valid format"
+
+  /post/matchupNote:
+    post:
+      tags:
+        - WIP
+      summary: Update the note text on an existing matchup
+      description: >
+        🚧 **Not yet functional.** Intended to append a note to a matchup
+        record. Currently registered as `router.get('post/matchupNote', ...)`
+        in `api/routes/post/matchupNote.ts` — this both uses the wrong HTTP
+        verb (GET instead of POST) and is missing the leading `/` in its
+        path, so it will not resolve at `/api/post/matchupNote` as intended.
+        The update query itself is also incomplete. Do not call this route
+        until it's fixed.
+      parameters:
+        - name: matchId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: championPlayed
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: championFighting
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: note
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+
+  /post/gameNote:
+    post:
+      tags:
+        - WIP
+      summary: Add a note to a specific game
+      description: >
+        🚧 **Not yet functional.** Stub route in `api/routes/post/gameNote.ts`
+        — currently `router.get('post/gameNote', ...)` with no request
+        handling logic and a path missing its leading `/`.
+      responses:
+        "501":
+          description: Not implemented
+
+  /get/game:
+    get:
+      tags:
+        - WIP
+      summary: Get game data
+      description: >
+        🚧 **Not yet functional.** Stub route in `api/routes/get/game.ts` —
+        registered as `router.get("get/game", ...)` (missing leading `/`)
+        with no request handling logic.
+      responses:
+        "501":
+          description: Not implemented

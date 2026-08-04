@@ -2,6 +2,7 @@ import { Router } from "express"
 const router = Router()
 import { sql } from "../../util/services"
 import { getQueries } from "../../util/inputValidation"
+import { classifyQueryFields, buildWhereClause } from "../../util/querryClassifier"
 
 import { z } from "zod"
 
@@ -11,31 +12,28 @@ const strictBoolean = z
     .optional()
 
 const MatchUpWRQuerySchema = z.object({
-    championPlayed: z.string().optional(),
-    puuid: z.string().optional(),
-    championFighting: z.string().optional(),
-    role: z.string().optional(),
+    championPlayed: z.string().optional().describe("where"),
+    puuid: z.string().optional().describe("where:games.puuid"),
+    championFighting: z.string().optional().describe("where"),
+    role: z.string().optional().describe("where"),
     isWinFirst: strictBoolean,
-    discordId: z.string().optional(),
+    discordId: z.string().optional().describe("where:users.discord_id"),
 })
 
-router.get("/get/totalWR", async(req, res) => {
+router.get("/get/totalWR", async (req, res) => {
     try {
-        const { championPlayed, puuid, championFighting, role, isWinFirst, discordId } = getQueries(req.query, MatchUpWRQuerySchema)
-        if(puuid == undefined && discordId == undefined) {
-            res.status(404).send("either puuid or discordId must be filled")
+        const parsed = getQueries(req.query, MatchUpWRQuerySchema)
+        const { puuid, discordId, isWinFirst } = parsed
+
+        if (puuid === undefined && discordId === undefined) {
+            res.status(400).send("either puuid or discordId must be filled")
             return
         }
-        const conditions = []
-        if (championPlayed !== undefined) conditions.push(sql`champion_played = ${championPlayed}`);
-        if (puuid !== undefined) conditions.push(sql`games.puuid = ${puuid}`);
-        if (championFighting !== undefined) conditions.push(sql`champion_fighting = ${championFighting}`);
-        if (role !== undefined) conditions.push(sql`role = ${role}`);
-        if (discordId !== undefined) conditions.push(sql`discordId = ${discordId}`);
-        let ordered = (isWinFirst) ? sql`wins` : sql`loss`
-        console.log(isWinFirst)
 
-        const whereClause = conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`)
+        const { where } = classifyQueryFields(MatchUpWRQuerySchema.shape, parsed)
+        const whereClause = buildWhereClause(where)
+
+        const orderColumn = isWinFirst ? sql`wins` : sql`loss`
 
         const querry = await sql`
             select champion_played, champion_fighting, role,
@@ -45,28 +43,28 @@ router.get("/get/totalWR", async(req, res) => {
             join users on games.puuid = users.puuid
             where ${whereClause}
             group by champion_fighting, champion_played, role
-            order by ${ordered} desc;
+            order by ${orderColumn} desc;
         `
-        let totalWins: number = 0;
-        let totalLoss: number = 0;
+
+        let totalWins: number = 0
+        let totalLoss: number = 0
         let withWinRate = querry.map((item) => {
             const wins = parseFloat(item.wins)
             const loses = parseFloat(item.loss)
-            totalWins += wins;
+            totalWins += wins
             totalLoss += loses
             const winRate = wins / (wins + loses)
             return { ...item, winRate }
         })
-        const wr = Math.round((totalWins/(totalWins+totalLoss))*100)
+        const wr = Math.round((totalWins / (totalWins + totalLoss)) * 100)
 
-        res.send({withWinRate, wr, totalWins, totalLoss})
-    } catch(e: any) {
+        res.send({ withWinRate, wr, totalWins, totalLoss })
+    } catch (e: any) {
         if (e instanceof z.ZodError) {
             const messages = e.issues.map((issue) => `Error: ${issue.message}`)
-            // e.g. ['Invalid option: expected one of "true"|"false"']
-            res.status(409).send(messages)
+            res.status(400).send(messages)
         } else {
-            res.status(409).send(e)
+            res.status(500).send(e)
         }
     }
 })

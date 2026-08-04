@@ -50,6 +50,13 @@ export default class riotApi {
         return this.call(`/riot/account/v1/accounts/by-riot-id/${gameName}/${tagLine}`);
     }
 
+    /**
+     * puuid to that player's top champion mastery entries
+     *
+     * @param {string} id - the puuid of the player
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await
+     */
     public idToHighestMastery(id: string): Promise<AxiosResponse> {
         return this.call(`/lol/champion-mastery/v4/champion-masteries/by-puuid/${id}/top`, "sg2")
     }
@@ -77,19 +84,51 @@ export default class riotApi {
         return this.call(`/lol/match/v5/matches/by-puuid/${id}/ids?start=${start}&count=${count}${querries}`, "sea")
     }
 
+    /**
+     * match id to the full match details for that game
+     *
+     * @param {string} matchId - the match id to look up (e.g. "SG2_161017792")
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await
+     */
     public matchIdToMatches(matchId: string): Promise<AxiosResponse>{
         return this.call(`/lol/match/v5/matches/${matchId}`, "sea")
     }
 
+    /**
+     * puuid to that player's summoner info (level, icon, etc.)
+     *
+     * @param {string} id - the puuid of the player
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await
+     */
     public idToSummoner(id: string): Promise<AxiosResponse>{
         return this.call(`/lol/summoner/v4/summoners/by-puuid/${id}`, "sg2")
     }
 
+    /**
+     * puuid to that player's currently active game, if one is in progress
+     *
+     * @param {string} id - the puuid of the player
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await. Rejects/404s if the player is not currently in a game.
+     */
     public idToCurrentMatch(id: string): Promise<AxiosResponse> {
         return this.call(`/lol/spectator/v5/active-games/by-summoner/${id}`, "sg2")
     }
 
+    /**
+     * match id to the timeline (frame-by-frame events) for that game
+     *
+     * @param {string} matchId - the match id to look up (e.g. "SG2_161017792")
+     *
+     * @returns {Promise<AxiosResponse>} res - Do not forget to await
+     */
     public matchIdToMatchTimeLine(matchId: string): Promise<AxiosResponse> {
         return this.call(`/lol/match/v5/matches/${matchId}/timeline`, "sea")
+    }
+
+    public idToRank(id: string): Promise<AxiosResponse> {
+        return this.call(`/lol/league/v4/entries/by-puuid/${id}`, "sg2")
     }
 }

@@ -2,24 +2,25 @@ import { Router } from "express"
 const router = Router()
 import { sql, riot } from "../../util/services.ts"
 import { getQueries } from "../../util/inputValidation.ts"
+import { classifyQueryFields, buildWhereClause } from "../../util/querryClassifier"
 import { z } from "zod"
 
 const MatchUpWRQuerySchema = z.object({
-    championPlayed: z.string().optional(),
-    puuid: z.string().optional(),
-    championFighting: z.string().optional(),
-    role: z.string().optional(),
+    championPlayed: z.string().optional().describe("where:notes.champion_played"),
+    puuid: z.string().optional().describe("where:games.puuid"),
+    championFighting: z.string().optional().describe("where:notes.champion_fighting"),
+    role: z.string().optional().describe("where:notes.role"),
+    // intentionally not described because it's like puuid
     summonerName: z.string().optional(),
-    discordId: z.string().optional(),
-    username: z.string().optional()
+    discordId: z.string().optional().describe("where:users.discord_id"),
+    username: z.string().optional().describe("where:users.username"),
 })
 
 router.get('/get/matchup', async (req, res) => {
-    let championFighting, championPlayed, username, discordId, puuid, summonerName
+    let parsed: z.infer<typeof MatchUpWRQuerySchema>
 
     try {
-        ({ championFighting, championPlayed, username, discordId, puuid, summonerName } =
-            getQueries(req.query, MatchUpWRQuerySchema) ?? {})
+        parsed = getQueries(req.query, MatchUpWRQuerySchema)
     } catch (e: any) {
         if (e instanceof z.ZodError) {
             return res.status(400).json({
@@ -31,23 +32,44 @@ router.get('/get/matchup', async (req, res) => {
         return res.status(500).json({ error: 'Unexpected query parsing error' })
     }
 
-    const conditions = []
+    // kinda like unique constraint
+    const identifierFields = {
+        puuid: parsed.puuid,
+        summonerName: parsed.summonerName,
+        discordId: parsed.discordId,
+    }
+    const suppliedIdentifiers = Object.entries(identifierFields)
+        .filter(([, value]) => value !== undefined)
+        .map(([key]) => key)
 
-    if (championFighting !== undefined) conditions.push(sql`notes.champion_fighting = ${championFighting}`)
-    if (championPlayed !== undefined) conditions.push(sql`notes.champion_played = ${championPlayed}`,)
-    if (username !== undefined) conditions.push(sql`users.username = ${username}`)
-    if (discordId !== undefined) conditions.push(sql`users.discordid = ${discordId}`)
-    if (puuid !== undefined) conditions.push(sql`games.puuid = ${puuid}`)
-    if (summonerName !== undefined){
-        const puuid = (await riot.summonerNameToId(summonerName)).data.puuid
-        conditions.push(sql`puuid=${puuid}`)
+    if (suppliedIdentifiers.length === 0) {
+        return res.status(400).json({
+            error: 'Exactly one of puuid, summonerName, or discordId must be supplied',
+        })
+    }
+    if (suppliedIdentifiers.length > 1) {
+        return res.status(400).json({
+            error: 'Only one of puuid, summonerName, or discordId may be supplied at a time',
+            received: suppliedIdentifiers,
+        })
     }
 
-    if (conditions.length === 0) {
-        return res.status(400).json({ error: 'At least one query parameter is required' })
+    const { where } = classifyQueryFields(MatchUpWRQuerySchema.shape, parsed)
+
+    // summonerName needs an async Riot lookup before it can become a condition,
+    // and it resolves to games.puuid rather than its own column — handled
+    // separately from the schema-driven classifier.
+    if (parsed.summonerName !== undefined) {
+        try {
+            const resolvedPuuid = (await riot.summonerNameToId(parsed.summonerName)).data.puuid
+            where.push(sql`games.puuid = ${resolvedPuuid}`)
+        } catch (e: any) {
+            console.error('Riot summoner lookup failed:', e)
+            return res.status(502).json({ error: 'Failed to resolve summoner name' })
+        }
     }
 
-    const whereClause = conditions.reduce((acc, cur) => sql`${acc} AND ${cur}`)
+    const whereClause = buildWhereClause(where)
 
     try {
         const rows = await sql`
@@ -59,7 +81,7 @@ router.get('/get/matchup', async (req, res) => {
             join notes on notes.champion_fighting = games.champion_fighting
                     and notes.champion_played = games.champion_played
                     and notes.role = games.role
-            and notes.puuid = games.puuid 
+                    and notes.puuid = games.puuid
             where ${whereClause}
             group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.puuid, users.username
             order by wins desc;
