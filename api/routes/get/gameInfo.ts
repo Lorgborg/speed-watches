@@ -13,13 +13,14 @@ const gameQuerySchema = z.object({
     championPlayed: z.string().optional().describe("where")
 })
 
-router.get("/get/game", async(req, res) => {
+// extremely slow to get so make sure to limit calls to small amounts of data
+router.get("/get/gameInfo", async(req, res) => {
     const parsed = getQueries(req.query, gameQuerySchema)
     const { where } = classifyQueryFields(gameQuerySchema.shape, parsed)
     const whereClause = buildWhereClause(where)
     
     const query = sql`
-        select username, puuid, match_id, champion_played, champion_fighting, role, kda, is_win, game_length, champ_composition
+        select username, puuid, match_id, champion_played, champion_fighting, role, kda, is_win, game_length, champ_composition, info
         join users on games.puuid=users.puuid
         where ${whereClause}
     `

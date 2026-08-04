@@ -1,5 +1,5 @@
 import type { AxiosResponse } from "axios";
-import riotApi from "../../utils/riot.ts";
+import riotApi from "../../utils/riot/riot.ts";
 import "dotenv/config"
 import type { ParsedQs } from "qs"
 

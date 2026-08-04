@@ -5,23 +5,42 @@ import { sql } from "./services.ts"
 type FieldRole = "where" | "value" | "order" | "ignore"
 const KNOWN_ROLES: FieldRole[] = ["where", "value", "order"]
 
-function getFieldRole(fieldSchema: z.ZodTypeAny): FieldRole {
+interface FieldDescriptor {
+    role: FieldRole
+    /** Explicit column override from "role:column" or "role:table.column" syntax */
+    column?: string
+}
+
+function parseFieldDescriptor(fieldSchema: z.ZodTypeAny): FieldDescriptor {
     let schema: any = fieldSchema
     while (schema && !schema.description && schema._def && "innerType" in schema._def) {
         schema = schema._def.innerType
     }
     const desc = schema?.description as string | undefined
-    return (desc && KNOWN_ROLES.includes(desc as FieldRole)) ? (desc as FieldRole) : "ignore"
+    if (!desc) return { role: "ignore" }
+
+    // Supports both plain "where" and qualified "where:table.column"
+    const [rolePart, ...columnParts] = desc.split(":")
+    const role = rolePart as FieldRole
+    if (!KNOWN_ROLES.includes(role)) return { role: "ignore" }
+
+    const column = columnParts.length > 0 ? columnParts.join(":") : undefined
+    return { role, column }
 }
 
 function toSnakeCase(key: string) {
-    // return all string after any capital letters
     return key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 }
 
-// Accept the shape record directly instead of z.ZodObject<T> —
-// avoids the ZodObject<T> generic ever needing to structurally
-// match against zod's internal $ZodType.
+/** Builds a properly-escaped column reference, handling "table.column" qualifiers. */
+function columnRef(column: string) {
+    if (column.includes(".")) {
+        const [table, col] = column.split(".")
+        return sql`${sql(table)}.${sql(col)}`
+    }
+    return sql(column)
+}
+
 export function classifyQueryFields(
     shape: Record<string, z.ZodTypeAny>,
     parsed: Record<string, any>
@@ -34,10 +53,12 @@ export function classifyQueryFields(
         const value = parsed[key]
         if (value === undefined) continue
 
-        const column = toSnakeCase(key)
-        switch (getFieldRole(shape[key])) {
+        const { role, column: explicitColumn } = parseFieldDescriptor(shape[key])
+        const column = explicitColumn ?? toSnakeCase(key)
+
+        switch (role) {
             case "where":
-                where.push(sql`${sql(column)} = ${value}`)
+                where.push(sql`${columnRef(column)} = ${value}`)
                 break
             case "value":
                 values[column] = value

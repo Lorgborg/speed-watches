@@ -2,10 +2,12 @@ import { Router } from "express"
 import { checkDiscordId, checkPuuid, getQueries } from "../../util/inputValidation"
 import { riot, sql } from "../../util/services.ts"
 import z from "zod"
-import { callRiot } from "../../../utils/riotQueue.ts"
+import { callRiot } from "../../../utils/riot/riotQueue.ts"
 import { idToChampion } from "../../../utils/functions/idToChampion.ts"
+import { resolvePuuidForToken } from "../../../utils/riot/resolvePuuidForTokens.ts"
 import { onboardGames } from "../../../immigrant-scum.ts"
-import riotApi from "../../../utils/riot.ts"
+import riotApi from "../../../utils/riot/riot.ts"
+import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from "../../../utils/riot/riotTokens.ts"
 
 const router = Router()
 
@@ -16,15 +18,18 @@ const user = z.object({
     username: z.string().describe("value").optional()
 })
 
+// Identity resolution ONLY — always the main token. The resulting puuid is
+// the canonical one stored in the users table and used for all existence
+// checks/comparisons against the DB.
 async function resolvePlayer(parsed: { summonerName?: string, puuid?: string, username?: string }) {
     const { summonerName, puuid, username } = parsed;
     const parsedUsername = username ?? "none";
 
     if (summonerName !== undefined && puuid === undefined) {
-        const resolvedPuuid = (await callRiot(riotApi.prototype.summonerNameToId, summonerName)).puuid;
+        const resolvedPuuid = (await callRiot(MAIN_TOKEN_INDEX, riotApi.prototype.summonerNameToId, summonerName)).puuid;
         return { summonerName, puuid: resolvedPuuid, username: parsedUsername };
     } else if (puuid !== undefined && summonerName === undefined) {
-        const resolvedName = (await callRiot(riotApi.prototype.idToSummonerName, puuid)).summonerName;
+        const resolvedName = (await callRiot(MAIN_TOKEN_INDEX, riotApi.prototype.idToSummoner, puuid)).summonerName;
         return { summonerName: resolvedName, puuid, username: parsedUsername };
     } else if (summonerName !== undefined && puuid !== undefined) {
         return { summonerName, puuid, username: parsedUsername };
@@ -46,13 +51,13 @@ router.post('/post/user', async (req, res) => {
     }
     const discordId = parsed.discordId;
 
+    // identity — main token, this puuid is what gets stored as canonical
     const resolved = await resolvePlayer(parsed);
     if (resolved == null) {
         return res.status(400).send("Please supply either summoner name or puuid");
     }
-    const { puuid } = resolved;
+    const { puuid, summonerName } = resolved;
 
-    // Targeted duplicate check instead of pulling the whole table
     const existing = await sql`
         SELECT puuid, discord_id FROM users
         WHERE puuid = ${puuid} OR discord_id = ${discordId}
@@ -64,31 +69,36 @@ router.post('/post/user', async (req, res) => {
         return res.status(400).send("The discord id is already in the database");
     }
 
-    // Fire all three independent Riot calls concurrently
+    // enrichment — needs its OWN token-scoped puuid, resolved (and cached)
+    // via summonerName, since the main-token puuid isn't portable
+    const enrichTokenIndex = await pickWorkerTokenIndex()
+    const workerPuuid = await resolvePuuidForToken(enrichTokenIndex, summonerName)
+
     const [highestMastery, accountDetails, rank] = await Promise.all([
-        callRiot(riotApi.prototype.idToHighestMastery, puuid),
-        callRiot(riotApi.prototype.idToSummoner, puuid),
-        callRiot(riotApi.prototype.idToRank, puuid),
+        callRiot(enrichTokenIndex, riotApi.prototype.idToHighestMastery, workerPuuid),
+        callRiot(enrichTokenIndex, riotApi.prototype.idToSummoner, workerPuuid),
+        callRiot(enrichTokenIndex, riotApi.prototype.idToRank, workerPuuid),
     ]);
 
     await Promise.all(
-        // to lazy to type
         highestMastery.map(async (mastery: any) => {
             mastery.championName = await idToChampion(mastery.championId);
         })
     );
 
+    // Store the MAIN-token puuid (canonical identity) — accountDetails.puuid
+    // is scoped to enrichTokenIndex and would not match future lookups.
     const save = await sql`
         INSERT INTO users
         (username, summoner_name, discord_id, puuid, account_details, rank, top_mastery, backfill_complete)
         VALUES
-        (${resolved.username}, ${resolved.summonerName}, ${discordId}, ${accountDetails.puuid}, ${sql.json(accountDetails)}, ${sql.json(rank)}, ${sql.json(highestMastery)}, ${false})
+        (${resolved.username}, ${summonerName}, ${discordId}, ${puuid}, ${sql.json(accountDetails)}, ${sql.json(rank)}, ${sql.json(highestMastery)}, ${false})
     `;
 
     if (save.count > 0) {
-        res.send(`user with info ${accountDetails.puuid} saved`);
-        onboardGames(puuid, resolved.summonerName).catch(e => {
-            console.error(`onboarding failed for ${resolved.summonerName}:`, e);
+        res.send(`user with info ${puuid} saved`);
+        onboardGames(puuid, summonerName).catch(e => {
+            console.error(`onboarding failed for ${summonerName}:`, e);
         });
     } else {
         res.status(400).send("error");

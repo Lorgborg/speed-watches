@@ -49,7 +49,7 @@ function createRiotWorker(token: string, tokenIndex: number): Worker {
         {
             connection,
             concurrency: 20,
-            limiter: { max: 20, duration: 1_000 } // built-in — replaces the manual short-window bucket entirely
+            limiter: { max: 14, duration: 1_000 } // built-in — replaces the manual short-window bucket entirely
         }
     )
 

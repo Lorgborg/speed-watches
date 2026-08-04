@@ -14,7 +14,7 @@ if(postgresuri == undefined){
 }
 const sql = postgres(postgresuri);
 
-import riotApi from "../../utils/riot.ts";
+import riotApi from "../../utils/riot/riot.ts";
 const { leagueApi } = process.env
 const riot = new riotApi(leagueApi);
 

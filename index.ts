@@ -1,9 +1,12 @@
 import postgres from 'postgres';
 import Participant from "./utils/participant.ts";
-import riotApi from "./utils/riot.ts"
+import riotApi from "./utils/riot/riot.ts"
 import "dotenv/config"
 import getOpponent from "./utils/functions/getOpponent.ts";
 import getPlaying from './utils/functions/getPlaying.ts';
+import { callRiot } from './utils/riot/riotQueue.ts';
+import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from './utils/riot/riotTokens.ts';
+import { resolvePuuidForToken } from './utils/riot/resolvePuuidForTokens.ts';
 const riot = new riotApi(process.env["leagueApi"])
 const { postgresuri } = process.env;
 
@@ -28,8 +31,10 @@ async function check() {
     // searches for games played for each user within last 5 minutes
     for(const user of users) {
         // checks games played within the last 5 minutes
-        const gamesPlayed = await riot.idToMatch(user.puuid,"5",epochTime) // beyonce, 5, 29 days: array
-        for(const gameId of gamesPlayed.data) {
+        const listTokenIndex = await pickWorkerTokenIndex()
+        const resolvedPuuid = await resolvePuuidForToken(listTokenIndex, user.summoner_name)
+        const gamesPlayed = await callRiot(listTokenIndex, riotApi.prototype.idToMatch, resolvedPuuid, "5", 0, epochTime, 0) // beyonce, 5, 29 days: array
+        for(const gameId of gamesPlayed) {
             const game = (await riot.matchIdToMatches(gameId)).data;
             const info = game.info
             const participants: Participant[] = game.info.participants

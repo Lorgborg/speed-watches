@@ -2,10 +2,12 @@ import { Router } from "express"
 import { checkDiscordId, checkPuuid, getQueries } from "../../util/inputValidation"
 import { riot, sql } from "../../util/services.ts"
 import z from "zod"
-import { callRiot } from "../../../utils/riotQueue.ts"
+import { callRiot } from "../../../utils/riot/riotQueue.ts"
 import { idToChampion } from "../../../utils/functions/idToChampion.ts"
+import { resolvePuuidForToken } from "../../../utils/riot/resolvePuuidForTokens.ts"
 import { onboardGames } from "../../../immigrant-scum.ts"
-import riotApi from "../../../utils/riot.ts"
+import riotApi from "../../../utils/riot/riot.ts"
+import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from "../../../utils/riot/riotTokens.ts"
 
 const router = Router()
 
@@ -16,15 +18,16 @@ const user = z.object({
     username: z.string().describe("value").optional()
 })
 
+// Identity resolution ONLY — always the main token.
 async function resolvePlayer(parsed: { summonerName?: string, puuid?: string, username?: string }) {
     const { summonerName, puuid, username } = parsed;
     const parsedUsername = username ?? "none";
 
     if (summonerName !== undefined && puuid === undefined) {
-        const resolvedPuuid = (await callRiot(riotApi.prototype.summonerNameToId, summonerName)).puuid;
+        const resolvedPuuid = (await callRiot(MAIN_TOKEN_INDEX, riotApi.prototype.summonerNameToId, summonerName)).puuid;
         return { summonerName, puuid: resolvedPuuid, username: parsedUsername };
     } else if (puuid !== undefined && summonerName === undefined) {
-        const resolvedName = (await callRiot(riotApi.prototype.idToSummoner, puuid)).summonerName;
+        const resolvedName = (await callRiot(MAIN_TOKEN_INDEX, riotApi.prototype.idToSummoner, puuid)).summonerName;
         return { summonerName: resolvedName, puuid, username: parsedUsername };
     } else if (summonerName !== undefined && puuid !== undefined) {
         return { summonerName, puuid, username: parsedUsername };
@@ -47,11 +50,12 @@ router.post('/post/user', async (req, res) => {
     }
     const discordId = parsed.discordId;
 
+    // identity — main token, this puuid is the canonical one being updated to
     const resolved = await resolvePlayer(parsed);
     if (resolved == null) {
         return res.status(400).send("Please supply either summoner name or puuid");
     }
-    const { puuid } = resolved;
+    const { puuid, summonerName } = resolved;
 
     // Targeted duplicate check instead of pulling the whole table
     const existing = await sql`
@@ -65,24 +69,29 @@ router.post('/post/user', async (req, res) => {
         return res.status(400).send("The discord id is already in the database");
     }
 
-    // Fire all three independent Riot calls concurrently
+    // enrichment — needs its OWN token-scoped puuid, resolved (and cached)
+    // via summonerName
+    const enrichTokenIndex = await pickWorkerTokenIndex()
+    const workerPuuid = await resolvePuuidForToken(enrichTokenIndex, summonerName)
+
     const [highestMastery, accountDetails, rank] = await Promise.all([
-        callRiot(riotApi.prototype.idToHighestMastery, puuid),
-        callRiot(riotApi.prototype.idToSummoner, puuid),
-        callRiot(riotApi.prototype.idToRank, puuid),
+        callRiot(enrichTokenIndex, riotApi.prototype.idToHighestMastery, workerPuuid),
+        callRiot(enrichTokenIndex, riotApi.prototype.idToSummoner, workerPuuid),
+        callRiot(enrichTokenIndex, riotApi.prototype.idToRank, workerPuuid),
     ]);
 
     await Promise.all(
-        // to lazy to type
         highestMastery.map(async (mastery: any) => {
             mastery.championName = await idToChampion(mastery.championId);
         })
     );
 
+    // Write the MAIN-token puuid, not accountDetails.puuid (which is scoped
+    // to enrichTokenIndex and would break future lookups against this row).
     const save = await sql`
     UPDATE users
     SET
-        puuid = ${accountDetails.puuid},
+        puuid = ${puuid},
         account_details = ${sql.json(accountDetails)},
         rank = ${sql.json(rank)},
         top_mastery = ${sql.json(highestMastery)}
@@ -90,9 +99,9 @@ router.post('/post/user', async (req, res) => {
     `;
 
     if (save.count > 0) {
-        res.send(`user with info ${accountDetails.puuid} saved`);
-        onboardGames(puuid, resolved.summonerName).catch(e => {
-            console.error(`onboarding failed for ${resolved.summonerName}:`, e);
+        res.send(`user with info ${puuid} saved`);
+        onboardGames(puuid, summonerName).catch(e => {
+            console.error(`onboarding failed for ${summonerName}:`, e);
         });
     } else {
         res.status(400).send("error");
