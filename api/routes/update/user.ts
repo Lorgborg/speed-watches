@@ -36,7 +36,7 @@ async function resolvePlayer(parsed: { summonerName?: string, puuid?: string, us
     }
 }
 
-router.post('/post/user', async (req, res) => {
+router.post('/update/user', async (req, res) => {
     console.log("posting")
     let parsed;
     try {

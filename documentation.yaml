@@ -6,17 +6,31 @@ servers:
     description: Local dev server
 info:
   title: Speed-watches
-  description: This API is for G2R members to take notes on the matchups they may encounter on league of legends. Note that a **bypass is required to access the api**
-  version: 1.1.0
+  description: >
+    This API is for G2R members to take notes on the matchups they may
+    encounter on league of legends. Note that a **bypass is required to
+    access the api**.
+
+
+    ⚠️ All routes — including the POST ones — currently read their
+    parameters from the **query string** ('req.query'), not the JSON
+    request body. This documentation reflects that as implemented.
+  version: 1.2.0
 tags:
   - name: Get
-    description: Endpoints for retrieving matchup notes and user data
+    description: Endpoints for retrieving matchup notes, game data, and user data
   - name: Post
-    description: Endpoints for creating users and matchup/game notes
-  - name: WIP
+    description: Endpoints for creating users, and creating/appending matchup notes
+  - name: Update
+    description: Endpoints intended to modify existing users or matchup notes
+  - name: Remove
+    description: Endpoints intended to remove matchup notes
+  - name: Known Issues
     description: >
-      Routes that are registered but not yet functional. Included here so the
-      surface area is visible, but none of these should be relied on yet.
+      Routes that are registered and reachable, but have bugs in their
+      current implementation that mean they don't behave as their name
+      suggests, or don't work at all yet. Included here so the surface
+      area is visible, but none of these should be relied on until fixed.
 components:
   schemas:
     Matchup:
@@ -59,7 +73,7 @@ components:
           example: "400599101353492480"
     User:
       type: object
-      description: A row from the postgres `users` table.
+      description: A row from the postgres 'users' table.
       properties:
         username:
           type: string
@@ -70,6 +84,66 @@ components:
         puuid:
           type: string
           example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
+        summonerName:
+          type: string
+          nullable: true
+        accountDetails:
+          type: object
+          description: Raw Riot summoner details, cached at user-creation time
+        rank:
+          type: array
+          description: Raw Riot ranked-entries payload, cached at user-creation time
+        topMastery:
+          type: array
+          description: Player's top champion mastery entries, cached at user-creation time
+        backfillComplete:
+          type: boolean
+          description: Whether historical match backfill has finished for this user
+    GameRow:
+      type: object
+      description: A row from the postgres 'games' table, joined with 'users'.
+      properties:
+        username:
+          type: string
+        puuid:
+          type: string
+        match_id:
+          type: string
+        champion_played:
+          type: string
+        champion_fighting:
+          type: string
+        role:
+          type: string
+        kda:
+          type: string
+          example: "5/2/9"
+        is_win:
+          type: boolean
+        game_length:
+          type: integer
+          description: Game length in seconds
+        champ_composition:
+          type: array
+          items:
+            type: string
+        info:
+          type: object
+          description: Raw Riot match 'info' payload (only returned by /get/gameInfo)
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              message:
+                type: string
 paths:
 
   /get/matchup:
@@ -77,8 +151,8 @@ paths:
       summary: Get matchup notes
       description: >
         Retrieves matchup notes filtered by any combination of champion played,
-        champion fighting, role, or user identity (username, discord ID, puuid,
-        or summoner name). At least one query parameter is required.
+        champion fighting, role, or user identity. Exactly one of 'puuid',
+        'summonerName', or 'discordId' must be supplied to identify the user.
       tags:
         - Get
       parameters:
@@ -105,25 +179,27 @@ paths:
           required: false
           schema:
             type: string
-          description: Riot PUUID of the note author
+          description: Riot PUUID of the note author. Mutually exclusive with summonerName/discordId.
         - name: summonerName
           in: query
           required: false
           schema:
             type: string
-          description: Summoner name, resolved to a PUUID via the Riot API
+          description: >
+            Summoner name, resolved to a PUUID via the Riot API at request time.
+            Mutually exclusive with puuid/discordId.
         - name: discordId
           in: query
           required: false
           schema:
             type: string
-          description: Discord ID of the note author
+          description: Discord ID of the note author. Mutually exclusive with puuid/summonerName.
         - name: username
           in: query
           required: false
           schema:
             type: string
-          description: G2R username of the note author
+          description: G2R username of the note author (additional filter, not an identifier)
       responses:
         '200':
           description: Matching matchup notes with aggregated win/loss counts
@@ -148,56 +224,40 @@ paths:
                       type: string
                     wins:
                       type: integer
-                      description: Count of recorded wins for this matchup
                     lose:
                       type: integer
-                      description: Count of recorded losses for this matchup
         '400':
-          description: Invalid or missing query parameters
+          description: >
+            Invalid query parameters, or none/more than one of
+            puuid/summonerName/discordId supplied
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  issues:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        path:
-                          type: string
-                        message:
-                          type: string
+                $ref: "#/components/schemas/ErrorResponse"
         '404':
           description: No matching notes found
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                    example: No matching notes found
+                $ref: "#/components/schemas/ErrorResponse"
         '409':
           description: Conflict (unique constraint violation)
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
+                $ref: "#/components/schemas/ErrorResponse"
         '500':
           description: Unexpected server or database error
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  error:
-                    type: string
+                $ref: "#/components/schemas/ErrorResponse"
+        '502':
+          description: Failed to resolve summonerName via the Riot API
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /get/totalWR:
     get:
@@ -205,7 +265,7 @@ paths:
       description: >
         Aggregates win/loss counts for matchups filtered by champion played,
         champion fighting, role, discord ID, or puuid, and returns an overall
-        win rate. Either puuid or discordId is required.
+        win rate. Either 'puuid' or 'discordId' is required.
       tags:
         - Get
       parameters:
@@ -214,7 +274,6 @@ paths:
           required: false
           schema:
             type: string
-          description: Champion the player was playing
         - name: puuid
           in: query
           required: false
@@ -226,13 +285,11 @@ paths:
           required: false
           schema:
             type: string
-          description: Opposing champion in the matchup
         - name: role
           in: query
           required: false
           schema:
             type: string
-          description: Lane/role for the matchup
         - name: isWinFirst
           in: query
           required: false
@@ -267,30 +324,19 @@ paths:
                           type: string
                         wins:
                           type: string
-                          description: Win count (returned as string from Postgres COUNT)
                         loss:
                           type: string
-                          description: Loss count (returned as string from Postgres COUNT)
                         winRate:
                           type: number
                           format: float
-                          description: wins / (wins + loss) for this specific matchup
                   wr:
                     type: integer
-                    description: Overall win rate percentage across all matched rows, rounded
                   totalWins:
                     type: integer
                   totalLoss:
                     type: integer
-        '404':
-          description: Neither puuid nor discordId was provided
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: either puuid or discordId must be filled
-        '409':
-          description: Invalid query parameters (Zod validation failure) or other request-time error
+        '400':
+          description: Neither puuid nor discordId was provided, or a Zod validation error occurred
           content:
             application/json:
               schema:
@@ -298,35 +344,35 @@ paths:
                 items:
                   type: string
                 example: ["Error: Invalid option: expected one of \"true\"|\"false\""]
+        '500':
+          description: Unexpected server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /get/user:
     get:
       tags:
         - Get
       summary: Get a user by username, puuid, or discord ID
-      description: >
-        Looks up a row from the `users` table. Checked in order of precedence:
-        `username` first, then `puuid`, then `discordId`. If none are provided,
-        no query is run and the response body will be empty.
+      description: Looks up matching row(s) from the 'users' table.
       parameters:
         - name: username
           in: query
           required: false
           schema:
             type: string
-          description: G2R username. Takes priority over puuid and discordId if provided.
         - name: puuid
           in: query
           required: false
           schema:
             type: string
-          description: Riot PUUID. Validated against the Riot API before querying.
         - name: discordId
           in: query
           required: false
           schema:
             type: string
-          description: Discord snowflake ID. Must match `^\d{17,19}$`.
       responses:
         "200":
           description: Matching user row(s)
@@ -336,81 +382,29 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-        "401":
-          description: puuid failed Riot API validation, or discordId is not a valid snowflake format
+        "400":
+          description: Invalid query parameters
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: "Error: Discord Id is not a valid format"
+                $ref: "#/components/schemas/ErrorResponse"
 
-  /post/user:
-    post:
+  /get/game:
+    get:
       tags:
-        - Post
-      summary: Create a user
+        - Known Issues
+        - Get
+      summary: Get game rows (currently broken)
       description: >
-        Creates a row in the `users` table. Either `puuid` or `summonerName`
-        must be provided — if `summonerName` is given, it is resolved to a
-        PUUID via the Riot API before insert.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - username
-                - discordId
-              properties:
-                username:
-                  type: string
-                  example: "rin"
-                discordId:
-                  type: string
-                  example: "400599101353492480"
-                puuid:
-                  type: string
-                  nullable: true
-                  example: "KdSK9Qcz1G71dOd0VvbMEv2QVL8Htr5MGdjS9vbprajckLR9zMYo8AWUlEzCzs780N9Eckq1TLzh4g"
-                summonerName:
-                  type: string
-                  nullable: true
-                  description: Riot ID (e.g. "Name#TAG"). Resolved to a puuid server-side if provided.
-                  example: "rin#NA1"
-      responses:
-        "200":
-          description: User saved successfully
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: "successfully saved"
-        "401":
-          description: Discord ID format invalid, puuid failed Riot API validation, or a required field was missing
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: "Error: Discord Id is not a valid format"
-
-  /post/matchupNote:
-    post:
-      tags:
-        - WIP
-      summary: Update the note text on an existing matchup
-      description: >
-        🚧 **Not yet functional.** Intended to append a note to a matchup
-        record. Currently registered as `router.get('post/matchupNote', ...)`
-        in `api/routes/post/matchupNote.ts` — this both uses the wrong HTTP
-        verb (GET instead of POST) and is missing the leading `/` in its
-        path, so it will not resolve at `/api/post/matchupNote` as intended.
-        The update query itself is also incomplete. Do not call this route
-        until it's fixed.
+        🚧 **Not currently functional.** The handler in
+        'api/routes/get/game.ts' builds its query as
+        'select ... join users on games.puuid=users.puuid where ...' with
+        no 'FROM games' clause before the 'JOIN', so this will throw a SQL
+        syntax error at request time. Do not rely on this route until fixed.
       parameters:
-        - name: matchId
+        - name: discordId
           in: query
-          required: false
+          required: true
           schema:
             type: string
         - name: puuid
@@ -418,7 +412,7 @@ paths:
           required: false
           schema:
             type: string
-        - name: championPlayed
+        - name: matchId
           in: query
           required: false
           schema:
@@ -428,37 +422,265 @@ paths:
           required: false
           schema:
             type: string
-        - name: note
+        - name: championPlayed
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '500':
+          description: Currently always errors due to malformed SQL (missing FROM clause)
+
+  /get/gameInfo:
+    get:
+      tags:
+        - Known Issues
+        - Get
+      summary: Get game rows including full raw match info (currently broken)
+      description: >
+        🚧 **Not currently functional**, for the same reason as '/get/game':
+        the query in 'api/routes/get/gameInfo.ts' is missing its 'FROM games'
+        clause before the 'JOIN'. Also noted in the source as
+        "extremely slow to get, so make sure to limit calls to small
+        amounts of data" once fixed.
+      parameters:
+        - name: discordId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: matchId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: championFighting
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: championPlayed
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '500':
+          description: Currently always errors due to malformed SQL (missing FROM clause)
+
+  /post/user:
+    post:
+      tags:
+        - Post
+      summary: Create a user
+      description: >
+        Creates a row in the 'users' table. Parameters are read from the
+        **query string**, not a JSON body. Either 'puuid' or 'summonerName'
+        must be provided — if 'summonerName' is given it's resolved to a
+        PUUID via the main Riot token, which becomes the canonical stored
+        puuid. Kicks off an async match-history backfill on success.
+
+
+        ⚠️ **Known issue:** 'api/routes/update/user.ts' also registers a
+        handler for 'POST /post/user' (rather than '/update/user', which its
+        folder location implies). Because route folders are loaded in the
+        order 'get, post, remove, update', this file's own handler in
+        'post/user.ts' is always matched first — the 'update/user.ts'
+        handler is currently dead code and never runs.
+      parameters:
+        - name: discordId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Discord snowflake ID; validated as a 17-19 digit numeric ID with a plausible creation timestamp
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot PUUID. Provide this or summonerName.
+        - name: summonerName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot ID (e.g. "Name#TAG"). Provide this or puuid.
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Defaults to "none" if omitted
+      responses:
+        "200":
+          description: User saved successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "user with info <puuid> saved"
+        "400":
+          description: >
+            Invalid query parameters, invalid discordId, neither
+            puuid nor summonerName supplied, or the user/discordId
+            already exists
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /post/matchupNote:
+    post:
+      tags:
+        - Post
+      summary: Append notes to a matchup
+      description: >
+        Appends the given note strings onto the existing 'notes' array for
+        matching row(s) in the 'notes' table ('notes = notes || <new notes>').
+        Parameters are read from the query string.
+      parameters:
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: notes
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+          description: One or more note strings to append
+        - name: championFighting
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: championPlayed
           in: query
           required: true
           schema:
             type: string
       responses:
-        "501":
-          description: Not implemented
+        "200":
+          description: Note updated
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "note updated"
 
-  /post/gameNote:
+  /update/matchupNote:
     post:
       tags:
-        - WIP
-      summary: Add a note to a specific game
+        - Update
+      summary: Append notes to a matchup (update variant)
       description: >
-        🚧 **Not yet functional.** Stub route in `api/routes/post/gameNote.ts`
-        — currently `router.get('post/gameNote', ...)` with no request
-        handling logic and a path missing its leading `/`.
+        Functionally identical to '/post/matchupNote' — appends the given
+        note strings onto the existing 'notes' array. Parameters are read
+        from the query string.
+      parameters:
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: notes
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+        - name: championFighting
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: championPlayed
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
-        "501":
-          description: Not implemented
+        "200":
+          description: Note updated
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "note updated"
 
-  /get/game:
-    get:
+  /remove/matchupNote:
+    post:
       tags:
-        - WIP
-      summary: Get game data
+        - Known Issues
+        - Remove
+      summary: Remove notes from a matchup (currently appends instead)
       description: >
-        🚧 **Not yet functional.** Stub route in `api/routes/get/game.ts` —
-        registered as `router.get("get/game", ...)` (missing leading `/`)
-        with no request handling logic.
+        🚧 **Behaves incorrectly.** Despite the route name and folder,
+        'api/routes/remove/matchupNote.ts' runs the exact same query as
+        '/post/matchupNote' and '/update/matchupNote'
+        ('notes = notes || <new notes>'), which **appends** to the notes
+        array rather than removing anything from it. Do not use this route
+        expecting deletion behavior until it's fixed.
+      parameters:
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: notes
+          in: query
+          required: true
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+          description: Currently appended rather than removed — see description above
+        - name: championFighting
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: championPlayed
+          in: query
+          required: true
+          schema:
+            type: string
       responses:
-        "501":
-          description: Not implemented
+        "200":
+          description: Note updated (appended, not removed — see summary)
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "note updated"

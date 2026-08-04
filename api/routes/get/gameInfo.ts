@@ -25,7 +25,7 @@ router.get("/get/gameInfo", async(req, res) => {
         where ${whereClause}
     `
     
-    return(query)
+    res.send(query)
 })
 
 export default router

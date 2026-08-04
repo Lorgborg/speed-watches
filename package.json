@@ -31,7 +31,6 @@
   },
   "scripts": {
     "start": "npx tsx index.ts",
-    "docs": "npx @scalar/cli project preview",
     "api": "npx tsx ./api/app.ts",
     "worker": "npx tsx utils/riot/riotWorker.ts",
     "tsx": "4.21.0"
