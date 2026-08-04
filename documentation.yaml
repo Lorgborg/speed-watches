@@ -392,15 +392,10 @@ paths:
   /get/game:
     get:
       tags:
-        - Known Issues
         - Get
-      summary: Get game rows (currently broken)
+      summary: Get game rows
       description: >
-        🚧 **Not currently functional.** The handler in
-        'api/routes/get/game.ts' builds its query as
-        'select ... join users on games.puuid=users.puuid where ...' with
-        no 'FROM games' clause before the 'JOIN', so this will throw a SQL
-        syntax error at request time. Do not rely on this route until fixed.
+        gets games. Returning a lot of games could cause the docs page to hang
       parameters:
         - name: discordId
           in: query
@@ -434,15 +429,10 @@ paths:
   /get/gameInfo:
     get:
       tags:
-        - Known Issues
         - Get
-      summary: Get game rows including full raw match info (currently broken)
+      summary: Get game rows including full raw match info
       description: >
-        🚧 **Not currently functional**, for the same reason as '/get/game':
-        the query in 'api/routes/get/gameInfo.ts' is missing its 'FROM games'
-        clause before the 'JOIN'. Also noted in the source as
-        "extremely slow to get, so make sure to limit calls to small
-        amounts of data" once fixed.
+        gets games. Returning a lot of games could cause the docs page to hang. This is expensive to get, please 
       parameters:
         - name: discordId
           in: query
@@ -558,13 +548,11 @@ paths:
         - name: notes
           in: query
           required: true
-          style: form
-          explode: true
           schema:
             type: array
             items:
               type: string
-          description: One or more note strings to append
+            example: ["Don't int"]
         - name: championFighting
           in: query
           required: true

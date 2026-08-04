@@ -18,13 +18,14 @@ router.get("/get/game", async(req, res) => {
     const { where } = classifyQueryFields(gameQuerySchema.shape, parsed)
     const whereClause = buildWhereClause(where)
     
-    const query = sql`
-        select username, puuid, match_id, champion_played, champion_fighting, role, kda, is_win, game_length, champ_composition
+    const query = await sql`
+        select username, games.puuid, match_id, champion_played, champion_fighting, role, kda, is_win, game_length, champ_composition
+        from games
         join users on games.puuid=users.puuid
         where ${whereClause}
     `
     
-    res.send(query)
+    res.json(query)
 })
 
 export default router
