@@ -210,9 +210,9 @@ paths:
                 items:
                   type: object
                   properties:
-                    username:
+                    summoner_name:
                       type: string
-                    puuid:
+                    discord_id:
                       type: string
                     champion_played:
                       type: string
