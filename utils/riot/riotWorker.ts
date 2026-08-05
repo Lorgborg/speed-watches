@@ -1,5 +1,5 @@
 // utils/riotWorker.ts
-import { Worker, Job, Queue } from "bullmq"
+import { Worker, Job, Queue, UnrecoverableError } from "bullmq"
 import connection from "./redisConnection.ts"
 import riotApi from "./riot.ts"
 import { getRiotTokens } from "./riotTokens.ts"
@@ -17,7 +17,7 @@ async function overLongLimit(key: string, max: number, windowMs: number): Promis
 function createRiotWorker(token: string, tokenIndex: number): Worker {
     const riot = new riotApi(token)
     const queueName = `riot-api-${tokenIndex}`
-    const queue = new Queue(queueName, { connection }) // handle to call queue.rateLimit()
+    const queue = new Queue(queueName, { connection: connection.duplicate() })
     const longKey = `riot:rl:${tokenIndex}:long`
 
     const worker = new Worker(
@@ -25,7 +25,6 @@ function createRiotWorker(token: string, tokenIndex: number): Worker {
         async (job: Job) => {
             const { method, args } = job.data as { method: keyof riotApi; args: any[] }
 
-            // sustained cap (100/120s), layered on top of the built-in short-burst limiter below
             const longWait = await overLongLimit(longKey, 100, 120_000)
             if (longWait) {
                 await queue.rateLimit(longWait)
@@ -38,18 +37,34 @@ function createRiotWorker(token: string, tokenIndex: number): Worker {
                 return res.data
             } catch (e: any) {
                 const status = e?.response?.status ?? e?.status
+
                 if (status === 429) {
                     const retryAfterSec = Number(e?.response?.headers?.["retry-after"] ?? 1)
                     await queue.rateLimit(retryAfterSec * 1000 + 250)
                     throw Worker.RateLimitError()
                 }
+
+                if (status === 400) {
+                    // "not found" — retrying won't change the answer, fail now
+                    throw new UnrecoverableError(
+                        `Riot API 400 (not found): ${e?.response?.data?.status?.message ?? e.message}`
+                    )
+                }
+
+                if (status === 409) {
+                    // transient conflict — let attempts/backoff retry it
+                    throw e
+                }
+
+                // anything else: default to normal retry behavior too,
+                // unless you want to unrecoverable-fail more codes here
                 throw e
             }
         },
         {
-            connection,
+            connection: connection.duplicate(),
             concurrency: 20,
-            limiter: { max: 14, duration: 1_000 } // built-in — replaces the manual short-window bucket entirely
+            limiter: { max: 14, duration: 1_000 }
         }
     )
 

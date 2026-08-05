@@ -38,5 +38,5 @@ export async function callRiot<Args extends any[], R>(
         { attempts: 8, backoff: { type: "exponential", delay: 2000 }, removeOnComplete: 1000, removeOnFail: 1000 }
     )
     console.log(`[riot-queue-${tokenIndex}] QUEUED job ${job.id} ${methodName}(${JSON.stringify(args)})`)
-    return job.waitUntilFinished(riotQueueEvents[tokenIndex]) as Promise<R>
+    return job.waitUntilFinished(riotQueueEvents[tokenIndex], 60000) as Promise<R>
 }

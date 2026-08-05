@@ -73,7 +73,7 @@ router.get('/get/matchup', async (req, res) => {
 
     try {
         const rows = await sql`
-            select users.username, users.puuid, notes.champion_played, notes.champion_fighting, notes.role, notes.notes,
+            select users.summoner_name, users.discord_id, notes.champion_played, notes.champion_fighting, notes.role, notes.notes,
                 count(*) filter (where is_win = true) as wins,
                 count(*) filter (where is_win = false) as lose
             from games
