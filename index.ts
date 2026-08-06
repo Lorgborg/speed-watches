@@ -5,7 +5,7 @@ import "dotenv/config"
 import getOpponent from "./utils/functions/getOpponent.ts";
 import getPlaying from './utils/functions/getPlaying.ts';
 import { callRiot } from './utils/riot/riotQueue.ts';
-import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from './utils/riot/riotTokens.ts';
+import { pickWorkerTokenIndex } from './utils/riot/riotTokens.ts';
 import { resolvePuuidForToken } from './utils/riot/resolvePuuidForTokens.ts';
 const riot = new riotApi(process.env["leagueApi"])
 const { postgresuri } = process.env;

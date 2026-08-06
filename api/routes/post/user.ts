@@ -1,6 +1,6 @@
 import { Router } from "express"
-import { checkDiscordId, checkPuuid, getQueries } from "../../util/inputValidation"
-import { riot, sql } from "../../util/services.ts"
+import { checkDiscordId, getQueries } from "../../util/inputValidation"
+import { sql } from "../../util/services.ts"
 import z from "zod"
 import { callRiot } from "../../../utils/riot/riotQueue.ts"
 import { idToChampion } from "../../../utils/functions/idToChampion.ts"

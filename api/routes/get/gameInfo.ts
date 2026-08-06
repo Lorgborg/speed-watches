@@ -15,7 +15,7 @@ const gameQuerySchema = z.object({
 
 // extremely slow to get so make sure to limit calls to small amounts of data
 router.get("/get/gameInfo", async(req, res) => {
-    try {       
+    try {
         const parsed = getQueries(req.query, gameQuerySchema)
         const { where } = classifyQueryFields(gameQuerySchema.shape, parsed)
         const whereClause = buildWhereClause(where)

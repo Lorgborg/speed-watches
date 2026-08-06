@@ -40,13 +40,24 @@ export async function checkPuuid(puuid: string): Promise<AxiosResponse | undefin
 }
 
 import { z } from "zod"
+import { getChampionPascalCase } from "../../utils/functions/getChampionPascal.ts";
+
+const CHAMPION_FIELDS = new Set(["championPlayed", "championFighting"])
 
 export function getQueries<T extends z.ZodTypeAny>(
     query: ParsedQs,
     schema: T
-): z.infer<T>{
+): z.infer<T> {
+    const normalized: ParsedQs = { ...query }
+
+    for (const key of Object.keys(normalized)) {
+        if (CHAMPION_FIELDS.has(key) && typeof normalized[key] === "string") {
+            normalized[key] = getChampionPascalCase(normalized[key] as string)
+        }
+    }
+
     try {
-        return schema.parse(query);
+        return schema.parse(normalized);
     } catch (e) {
         if (e instanceof z.ZodError) {
             throw new Error(e.issues.map(issue => formatZodIssue(issue)).join("; "));

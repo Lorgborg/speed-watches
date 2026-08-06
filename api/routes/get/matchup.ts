@@ -42,11 +42,6 @@ router.get('/get/matchup', async (req, res) => {
         .filter(([, value]) => value !== undefined)
         .map(([key]) => key)
 
-    if (suppliedIdentifiers.length === 0) {
-        return res.status(400).json({
-            error: 'Exactly one of puuid, summonerName, or discordId must be supplied',
-        })
-    }
     if (suppliedIdentifiers.length > 1) {
         return res.status(400).json({
             error: 'Only one of puuid, summonerName, or discordId may be supplied at a time',
@@ -83,7 +78,7 @@ router.get('/get/matchup', async (req, res) => {
                     and notes.role = games.role
                     and notes.puuid = games.puuid
             where ${whereClause}
-            group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.puuid, users.username
+            group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.summoner_name, users.discord_id
             order by wins desc;
             `
         if (rows.length === 0) {
