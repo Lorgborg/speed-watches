@@ -38,6 +38,7 @@
     "checker": "npx tsx src/checker.ts",
     "api": "npx tsx ./src/app.ts",
     "worker": "npx tsx src/riot/riotWorker.ts",
+    "check-workers": "npx tsx src/scripts/checkWorkers.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

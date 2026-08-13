@@ -9,7 +9,7 @@ export function getRiotTokens(): string[] {
     if (key) tokens.push(key)
   }
   if (tokens.length === 0) {
-    throw new Error("No leagueApi1..leagueApi4 tokens found in .env")
+    throw new Error("No leagueApi1..leagueApi5 tokens found in .env")
   }
   return tokens
 }
