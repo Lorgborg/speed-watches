@@ -78,8 +78,8 @@ router.get('/get/matchup', async (req, res) => {
                     and notes.role = games.role
                     and notes.puuid = games.puuid
             where ${whereClause}
-            group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.summoner_name, users.discord_id
-            order by wins desc;
+            group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.summoner_name, users.discord_id, games.game_creation
+            order by game_creation asc;
             `
         if (rows.length === 0) {
             return res.status(404).json({ error: 'No matching notes found' })

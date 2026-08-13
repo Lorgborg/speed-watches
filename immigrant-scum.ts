@@ -94,8 +94,9 @@ export async function onboardGames(puuid: string, summonerName: string) {
         const listSearchPuuid = await resolvePuuidForToken(listTokenIndex, summonerName)
 
         let online: Array<string> = [];
+        const now = new Date().getMilliseconds() /1000
         try {
-            online = await callRiot(listTokenIndex, riotApi.prototype.idToMatch, listSearchPuuid, "100", 0, 0, i);
+            online = await callRiot(listTokenIndex, riotApi.prototype.idToMatch, listSearchPuuid, "100", now, 0, i);
         } catch (e: any) {
             console.log(`[FATAL PAGE FETCH] user=${user.username} offset=${i}:`, e?.response?.status, e?.message);
             break;

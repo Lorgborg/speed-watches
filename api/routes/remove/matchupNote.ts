@@ -13,7 +13,7 @@ const gameNote = z.object({
     championPlayed: z.string().describe("where")
 })
 // post game notes
-router.post('/remove/matchupNote', async (req, res) => {
+router.delete('/remove/matchupNote', async (req, res) => {
     const parsed = getQueries(req.query, gameNote)
     const { where, values } = classifyQueryFields(gameNote.shape, parsed)
 

@@ -30,7 +30,7 @@
     "typescript": "^7.0.2"
   },
   "scripts": {
-    "start": "npx tsx index.ts",
+    "checker": "npx tsx index.ts",
     "api": "npx tsx ./api/app.ts",
     "worker": "npx tsx utils/riot/riotWorker.ts",
     "tsx": "4.21.0"

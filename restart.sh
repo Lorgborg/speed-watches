@@ -1,11 +1,12 @@
 #!/bin/sh
 
 # Define sessions and commands using case
-for sess in speed-watches-api worker1 worker2; do
+for sess in speed-watches-api worker1 worker2 checker; do
     # Determine command
     case "$sess" in
         speed-watches-api) cmd="npm run api" ;;
         worker1|worker2)   cmd="npm run worker" ;;
+	checker)	   cmd="npm run checker";;
         *) echo "Unknown session: $sess"; continue ;;
     esac
 

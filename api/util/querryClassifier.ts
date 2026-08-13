@@ -75,6 +75,23 @@ export function classifyQueryFields(
 }
 
 export function buildWhereClause(conditions: any[]) {
-    if (conditions.length === 0) return sql`TRUE`
-    return conditions.reduce((acc, cur) => sql`${acc} AND ${cur}`)
+  if (conditions.length === 0) return sql`TRUE`
+  return conditions.reduce((acc, cur) => sql`${acc} AND ${cur}`)
+}
+
+export function buildValueClause(values: Record<string, any>) {
+  const entries = Object.entries(values)
+  if (entries.length === 0) {
+    // Returning an empty fragment avoids breaking the query,
+    // but the caller should ideally check and abort early.
+    return sql``
+  }
+
+  // Build an array of "column = value" fragments
+  const setFragments = entries.map(
+    ([col, val]) => sql`${sql(col)} = ${val}`
+  )
+
+  // Join with commas using sql.reduce
+  return setFragments.reduce((acc, frag) => sql`${acc}, ${frag}`)
 }

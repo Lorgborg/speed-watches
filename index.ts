@@ -5,7 +5,7 @@ import "dotenv/config"
 import getOpponent from "./utils/functions/getOpponent.ts";
 import getPlaying from './utils/functions/getPlaying.ts';
 import { callRiot } from './utils/riot/riotQueue.ts';
-import { pickWorkerTokenIndex } from './utils/riot/riotTokens.ts';
+import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from './utils/riot/riotTokens.ts';
 import { resolvePuuidForToken } from './utils/riot/resolvePuuidForTokens.ts';
 const riot = new riotApi(process.env["leagueApi"])
 const { postgresuri } = process.env;
@@ -35,7 +35,8 @@ async function check() {
         const resolvedPuuid = await resolvePuuidForToken(listTokenIndex, user.summoner_name)
         const gamesPlayed = await callRiot(listTokenIndex, riotApi.prototype.idToMatch, resolvedPuuid, "5", 0, epochTime, 0) // beyonce, 5, 29 days: array
         for(const gameId of gamesPlayed) {
-            const game = (await riot.matchIdToMatches(gameId)).data;
+            // currently using the main api key to prevent encrypted puuid from cock blocking
+            const game = await callRiot(MAIN_TOKEN_INDEX, riotApi.prototype.matchIdToMatches, gameId);
             const info = game.info
             const participants: Participant[] = game.info.participants
             const participant = getPlaying(participants, user.puuid)
