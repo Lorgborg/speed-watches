@@ -7,6 +7,7 @@ import getPlaying from './core/getPlaying.ts';
 import { callRiot } from './riot/riotQueue.ts';
 import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from './riot/riotTokens.ts';
 import { resolvePuuidForToken } from './riot/resolvePuuidForTokens.ts';
+import { resumeIncompleteBackfills } from './scripts/immigrant-scum.ts';
 const { postgresuri } = process.env;
 
 // throw error if postgres is undefined
@@ -75,7 +76,23 @@ async function check() {
   }
 }
 
+// Re-run backfill for any user whose onboarding was interrupted (see
+// resumeIncompleteBackfills). Guarded so overlapping cycles can't stack.
+let resumingBackfills = false
+async function resumeBackfills() {
+  if (resumingBackfills) return
+  resumingBackfills = true
+  try {
+    await resumeIncompleteBackfills()
+  } catch (e) {
+    console.error("backfill resume error:", e)
+  } finally {
+    resumingBackfills = false
+  }
+}
+
 check()
+resumeBackfills()
 
 setInterval(check, 5 * 60 * 1000) // runs 5 minutes
 

@@ -49,10 +49,14 @@ function createRiotWorker(token: string, tokenIndex: number): Worker {
           throw Worker.RateLimitError()
         }
 
-        if (status === 400) {
-          // "not found" — retrying won't change the answer, fail now
+        if (status === 400 || status === 401 || status === 403) {
+          // permanent failures — retrying won't change the answer, fail now
+          const label =
+              status === 400 ? "not found" :
+                status === 401 ? "invalid or expired key" :
+                  "forbidden"
           throw new UnrecoverableError(
-            `Riot API 400 (not found): ${err.response?.data?.status?.message ?? err.message}`
+            `Riot API ${status} (${label}): ${err.response?.data?.status?.message ?? err.message}`
           )
         }
 
