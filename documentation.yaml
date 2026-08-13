@@ -12,25 +12,26 @@ info:
     access the api**.
 
 
-    ⚠️ All routes — including the POST ones — currently read their
+    ⚠️ All routes — including the POST/DELETE ones — currently read their
     parameters from the **query string** ('req.query'), not the JSON
     request body. This documentation reflects that as implemented.
-  version: 1.2.0
+  version: 1.3.0
 tags:
   - name: Get
     description: Endpoints for retrieving matchup notes, game data, and user data
   - name: Post
-    description: Endpoints for creating users, and creating/appending matchup notes
+    description: Endpoints for creating users, creating/appending matchup notes, and scoring games
   - name: Update
     description: Endpoints intended to modify existing users or matchup notes
   - name: Remove
-    description: Endpoints intended to remove matchup notes
+    description: Endpoints intended to remove matchup notes, notes, or users
   - name: Known Issues
     description: >
       Routes that are registered and reachable, but have bugs in their
       current implementation that mean they don't behave as their name
-      suggests, or don't work at all yet. Included here so the surface
-      area is visible, but none of these should be relied on until fixed.
+      suggests, don't work at all, or silently ignore part of their
+      input. Included here so the surface area is visible, but none of
+      these should be relied on until fixed.
 components:
   schemas:
     Matchup:
@@ -127,9 +128,47 @@ components:
           type: array
           items:
             type: string
+        laning:
+          type: string
+          nullable: true
+        team_fighting:
+          type: string
+          nullable: true
         info:
           type: object
           description: Raw Riot match 'info' payload (only returned by /get/gameInfo)
+    RecentGameRow:
+      type: object
+      description: A row from 'games' aggregated with any applicable matchup notes.
+      properties:
+        match_id:
+          type: string
+        game_creation:
+          type: string
+          description: Riot match creation timestamp
+        champion_played:
+          type: string
+        champion_fighting:
+          type: string
+        role:
+          type: string
+        kda:
+          type: string
+          example: "5/2/9"
+        is_win:
+          type: boolean
+        notes_applicable:
+          type: array
+          description: Any matchup notes whose champion_fighting/matchIds overlap this game
+          items:
+            type: object
+            properties:
+              champion_fighting:
+                type: string
+              notes:
+                type: array
+                items:
+                  type: string
     ErrorResponse:
       type: object
       properties:
@@ -151,8 +190,8 @@ paths:
       summary: Get matchup notes
       description: >
         Retrieves matchup notes filtered by any combination of champion played,
-        champion fighting, role, or user identity. Exactly one of 'puuid',
-        'summonerName', or 'discordId' must be supplied to identify the user.
+        champion fighting, role, or user identity. At most one of 'puuid',
+        'summonerName', or 'discordId' may be supplied to identify the user.
       tags:
         - Get
       parameters:
@@ -228,7 +267,7 @@ paths:
                       type: integer
         '400':
           description: >
-            Invalid query parameters, or none/more than one of
+            Invalid query parameters, or more than one of
             puuid/summonerName/discordId supplied
           content:
             application/json:
@@ -389,13 +428,74 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /get/recent:
+    get:
+      tags:
+        - Get
+      summary: Get the most recent game(s), with any applicable matchup notes attached
+      description: >
+        Retrieves the most recent rows from 'games' (newest first), left-joined
+        against 'notes' so any note whose champion/matchId overlaps the game is
+        attached under 'notes_applicable'. Unlike '/get/matchup', no identifying
+        field is required — omitting all filters returns the most recent
+        game(s) across every user.
+      parameters:
+        - name: championPlayed
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: championFighting
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "1"
+      responses:
+        "200":
+          description: Most recent matching game row(s), newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RecentGameRow"
+        "400":
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /get/game:
     get:
       tags:
         - Get
+        - Known Issues
       summary: Get game rows
       description: >
-        gets games. Returning a lot of games could cause the docs page to hang
+        Gets games joined with their owning user. Returning a lot of games
+        could cause the docs page to hang.
+
+
+        🚧 **Known issue:** if 'matchId' is not supplied, the route looks up
+        the most recent matching game and intends to scope the final query to
+        it — but the lookup happens *after* the WHERE conditions have already
+        been built, so 'matchId' never actually gets applied to the final
+        query. In practice, omitting 'matchId' returns all games matching the
+        other filters (up to 'limit'), not just the latest one, and with no
+        explicit ORDER BY on the final query the row order isn't guaranteed.
+        Always pass 'matchId' explicitly if you need a single specific game.
       parameters:
         - name: discordId
           in: query
@@ -412,6 +512,9 @@ paths:
           required: false
           schema:
             type: string
+          description: >
+            Recommended to always supply this explicitly — see the known
+            issue above for what happens when it's omitted.
         - name: championFighting
           in: query
           required: false
@@ -422,9 +525,27 @@ paths:
           required: false
           schema:
             type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "20"
       responses:
-        '500':
-          description: Currently always errors due to malformed SQL (missing FROM clause)
+        '200':
+          description: Matching game row(s), joined with the owning user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameRow"
+        '400':
+          description: Invalid query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /get/gameInfo:
     get:
@@ -432,7 +553,9 @@ paths:
         - Get
       summary: Get game rows including full raw match info
       description: >
-        gets games. Returning a lot of games could cause the docs page to hang. This is expensive to get, please 
+        Gets games joined with their owning user, including the raw Riot
+        match 'info' payload. This is expensive to fetch — please filter
+        with 'discordId' and other parameters rather than pulling everything.
       parameters:
         - name: discordId
           in: query
@@ -460,13 +583,26 @@ paths:
           schema:
             type: string
       responses:
+        '200':
+          description: Matching game row(s), including raw match info
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameRow"
         '500':
-          description: Currently always errors due to malformed SQL (missing FROM clause)
+          description: Unexpected server or database error (also returned for invalid query parameters — errors aren't distinguished by status code on this route)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /post/user:
     post:
       tags:
         - Post
+        - Known Issues
       summary: Create a user
       description: >
         Creates a row in the 'users' table. Parameters are read from the
@@ -529,17 +665,29 @@ paths:
     post:
       tags:
         - Post
+        - Known Issues
       summary: Append notes to a matchup
       description: >
         Appends the given note strings onto the existing 'notes' array for
         matching row(s) in the 'notes' table ('notes = notes || <new notes>').
         Parameters are read from the query string.
+
+
+        🚧 **Known issue:** the update query joins 'notes' against 'users'
+        ('FROM users') but never adds a join predicate tying 'notes.puuid' to
+        'users.puuid'. When filtering only by 'discordId' (no 'puuid'), this
+        means the WHERE clause doesn't actually scope the update to that
+        user's notes — always pass 'puuid' explicitly to be safe, and treat
+        'discordId'-only filtering as unreliable until this is fixed. See
+        also '/update/matchupNote' and '/remove/matchupNote', which share the
+        exact same underlying query and issue.
       parameters:
         - name: discordId
           in: query
           required: false
           schema:
             type: string
+          description: See known issue above — prefer 'puuid' for reliable scoping.
         - name: puuid
           in: query
           required: false
@@ -553,6 +701,7 @@ paths:
             items:
               type: string
             example: ["Don't int"]
+          description: A single string is also accepted and will be wrapped in an array.
         - name: championFighting
           in: query
           required: true
@@ -572,21 +721,89 @@ paths:
                 type: string
                 example: "note updated"
 
-  /update/matchupNote:
+  /post/gameScore:
     post:
       tags:
-        - Update
-      summary: Append notes to a matchup (update variant)
+        - Post
+        - Known Issues
+      summary: Set pushing/laning/teamFighting scores on a game
       description: >
-        Functionally identical to '/post/matchupNote' — appends the given
-        note strings onto the existing 'notes' array. Parameters are read
-        from the query string.
+        Updates the 'pushing', 'laning', and/or 'teamFighting' columns on a
+        row in the 'games' table. Parameters are read from the query string.
+        Always responds with 'true' regardless of whether any row was
+        actually updated.
+
+
+        🚧 **Known issue:** shares the same 'matchId'-not-applied bug as
+        '/get/game' — if 'matchId' is omitted, the route looks up the latest
+        matching game but that lookup isn't incorporated into the final
+        UPDATE's WHERE clause, so the update can apply more broadly than
+        intended. Always pass 'matchId' explicitly.
       parameters:
         - name: discordId
           in: query
           required: false
           schema:
             type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: matchId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            Recommended to always supply this explicitly — see the known
+            issue above for what happens when it's omitted.
+        - name: pushing
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: laning
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: teamFighting
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Always returned on success, regardless of whether a row was updated
+          content:
+            application/json:
+              schema:
+                type: boolean
+                example: true
+
+  /update/matchupNote:
+    post:
+      tags:
+        - Update
+        - Known Issues
+      summary: Append notes to a matchup (update variant)
+      description: >
+        Functionally identical to '/post/matchupNote' — appends the given
+        note strings onto the existing 'notes' array. Parameters are read
+        from the query string.
+
+
+        🚧 **Known issue:** shares the missing 'notes'/'users' join
+        predicate described under '/post/matchupNote' — prefer 'puuid' over
+        'discordId'-only filtering.
+      parameters:
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: See known issue above — prefer 'puuid' for reliable scoping.
         - name: puuid
           in: query
           required: false
@@ -621,7 +838,7 @@ paths:
                 example: "note updated"
 
   /remove/matchupNote:
-    post:
+    delete:
       tags:
         - Known Issues
         - Remove
@@ -632,13 +849,16 @@ paths:
         '/post/matchupNote' and '/update/matchupNote'
         ('notes = notes || <new notes>'), which **appends** to the notes
         array rather than removing anything from it. Do not use this route
-        expecting deletion behavior until it's fixed.
+        expecting deletion behavior until it's fixed. It also shares the
+        missing 'notes'/'users' join predicate described under
+        '/post/matchupNote' — prefer 'puuid' over 'discordId'-only filtering.
       parameters:
         - name: discordId
           in: query
           required: false
           schema:
             type: string
+          description: See known issue above — prefer 'puuid' for reliable scoping.
         - name: puuid
           in: query
           required: false
@@ -672,3 +892,41 @@ paths:
               schema:
                 type: string
                 example: "note updated"
+
+  /remove/note:
+    delete:
+      tags:
+        - Known Issues
+        - Remove
+      summary: Remove a note (not implemented)
+      description: >
+        🚧 **Non-functional.** 'api/routes/remove/note.ts' accepts no
+        parameters (its Zod schema is empty), builds a WHERE clause it never
+        uses, and never executes a query or calls 'res.send'/'res.json'.
+        Any request to this route will hang until the client times out. Do
+        not call this route.
+      parameters: []
+      responses:
+        default:
+          description: >
+            No response is ever sent by the current implementation — the
+            request will hang until the client-side timeout is reached.
+
+  /remove/user:
+    delete:
+      tags:
+        - Known Issues
+        - Remove
+      summary: Remove a user (not implemented)
+      description: >
+        🚧 **Non-functional.** 'api/routes/remove/user.ts' accepts no
+        parameters (its Zod schema is empty), builds a WHERE clause it never
+        uses, and never executes a query or sends a response. Any request to
+        this route will hang until the client times out. Do not call this
+        route.
+      parameters: []
+      responses:
+        default:
+          description: >
+            No response is ever sent by the current implementation — the
+            request will hang until the client-side timeout is reached.

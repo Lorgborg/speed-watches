@@ -67,20 +67,31 @@ router.get('/get/matchup', async (req, res) => {
     const whereClause = buildWhereClause(where)
 
     try {
-        const rows = await sql`
-            select users.summoner_name, users.discord_id, notes.champion_played, notes.champion_fighting, notes.role, notes.notes,
-                count(*) filter (where is_win = true) as wins,
-                count(*) filter (where is_win = false) as lose
-            from games
-            join users on games.puuid = users.puuid
-            join notes on notes.champion_fighting = games.champion_fighting
-                    and notes.champion_played = games.champion_played
-                    and notes.role = games.role
-                    and notes.puuid = games.puuid
-            where ${whereClause}
-            group by notes.champion_fighting, notes.champion_played, notes.role, notes.notes, users.summoner_name, users.discord_id, games.game_creation
-            order by game_creation asc;
-            `
+      const rows = await sql`
+        SELECT
+        users.summoner_name,
+        users.discord_id,
+        notes.champion_played,
+        notes.champion_fighting,
+        notes.role,
+        notes.notes,
+        COUNT(*) FILTER (WHERE games.is_win = true)  AS wins,
+        COUNT(*) FILTER (WHERE games.is_win = false) AS loses
+        FROM notes
+        JOIN users ON notes.puuid = users.puuid
+        LEFT JOIN games
+          ON games.match_id = ANY(notes.matchids)
+          AND games.puuid = notes.puuid
+        WHERE ${whereClause}
+        GROUP BY
+          users.summoner_name,
+          users.discord_id,
+          notes.champion_played,
+          notes.champion_fighting,
+          notes.role,
+          notes.notes
+        ORDER BY wins DESC;
+          `
         if (rows.length === 0) {
             return res.status(404).json({ error: 'No matching notes found' })
         }

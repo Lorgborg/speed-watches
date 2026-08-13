@@ -29,22 +29,22 @@ router.get('/get/recent', async (req, res) => {
     g.kda,
     g.is_win,
     COALESCE(
-        json_agg(
-            json_build_object(
-                'champion_fighting', n.champion_fighting,
-                'notes', n.notes
-            )
-        ) FILTER (WHERE n.puuid IS NOT NULL),
-        '[]'::json
+      json_agg(
+        json_build_object(
+          'champion_fighting', n.champion_fighting,
+          'notes', n.notes
+        )
+      ) FILTER (WHERE n.puuid IS NOT NULL),
+      '[]'::json
     ) AS notes_applicable
   FROM games g
   JOIN users u ON g.puuid = u.puuid
   LEFT JOIN notes n
-      ON g.puuid = n.puuid
-      AND g.match_id = ANY(n.matchids)
+    ON g.puuid = n.puuid
+    AND g.match_id = ANY(n.matchids)
   WHERE ${whereClause}
   GROUP BY u.discord_id, u.summoner_name, g.match_id, g.game_creation, 
-          g.champion_played, g.role, g.kda, g.is_win, g.champion_fighting
+    g.champion_played, g.role, g.kda, g.is_win, g.champion_fighting
   ORDER BY g.game_creation DESC
   LIMIT ${parsed.limit};
   `

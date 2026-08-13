@@ -6,30 +6,30 @@ import { buildWhereClause, classifyQueryFields } from "../../util/querryClassifi
 import { sql } from "../../util/services"
 
 const gameQuerySchema = z.object({
-    puuid: z.string().optional().describe("where:users.puuid"),
-    discordId: z.string().describe("where"),
-    matchId: z.string().optional().describe("where"),
-    championFighting: z.string().optional().describe("where"),
-    championPlayed: z.string().optional().describe("where")
+  puuid: z.string().optional().describe("where:users.puuid"),
+  discordId: z.string().describe("where"),
+  matchId: z.string().optional().describe("where"),
+  championFighting: z.string().optional().describe("where"),
+  championPlayed: z.string().optional().describe("where")
 })
 
 // extremely slow to get so make sure to limit calls to small amounts of data
 router.get("/get/gameInfo", async(req, res) => {
-    try {
-        const parsed = getQueries(req.query, gameQuerySchema)
-        const { where } = classifyQueryFields(gameQuerySchema.shape, parsed)
-        const whereClause = buildWhereClause(where)
-        
-        const query = await sql`
-            select username, games.puuid, match_id, champion_played, champion_fighting, role, kda, is_win, game_length, champ_composition, info
-            from games
-            join users on games.puuid=users.puuid
-            where ${whereClause}
-        `
-        res.json(query)
-    } catch(e) {
-        res.send(e)
-    }
+  try {
+    const parsed = getQueries(req.query, gameQuerySchema)
+    const { where } = classifyQueryFields(gameQuerySchema.shape, parsed)
+    const whereClause = buildWhereClause(where)
+    
+    const query = await sql`
+      select username, games.puuid, match_id, champion_played, champion_fighting, role, kda, is_win, game_length, champ_composition, info
+      from games
+      join users on games.puuid=users.puuid
+      where ${whereClause}
+    `
+    res.json(query)
+  } catch(e) {
+    res.send(e)
+  }
 })
 
 export default router
