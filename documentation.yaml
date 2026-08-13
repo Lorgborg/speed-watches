@@ -15,7 +15,24 @@ info:
     ⚠️ All routes — including the POST/DELETE ones — currently read their
     parameters from the **query string** ('req.query'), not the JSON
     request body. This documentation reflects that as implemented.
-  version: 1.4.0
+
+
+    ### 🔑 API keys
+
+    Every request must send an API key as `Authorization: Bearer <key>`
+    (the `x-api-key` header is also accepted).
+
+    A **public read-only dev key** is shown below so you can try every
+    endpoint directly from this page:
+
+    `822e6962cfcf93a42668050dd8aa3b77e6c1b75909762d9d`
+
+    Click the **Authorize** button at the top of this page and paste the
+    key to unlock "Try it out" on every endpoint. Dev keys only permit
+    **GET** requests (POST/PUT/DELETE return `403 Forbidden`) and are
+    rate-limited to 30 requests per 10 minutes. The admin key is never
+    published.
+  version: 1.5.0
 tags:
   - name: Get
     description: Endpoints for retrieving matchup notes, game data, and user data
@@ -32,7 +49,18 @@ tags:
       suggests or silently misbehave on certain inputs. Included here so
       the surface area is visible, but none of these should be relied on
       until fixed.
+security:
+  - ApiKeyAuth: []
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: api-key
+      description: >
+        API key sent as `Authorization: Bearer <key>` (the `x-api-key`
+        header is also accepted). Use the read-only dev key from the API
+        description. Dev keys are GET-only and rate-limited.
   schemas:
     Matchup:
       type: object
