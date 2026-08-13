@@ -3,6 +3,7 @@ import bodyParser from "body-parser"
 import routes from "./api/routes/index.ts"
 import cors from "cors"
 import path from "path"
+import "dotenv/config"
 
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
@@ -19,7 +20,14 @@ app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
 app.use('/api', apiKeyAuth)
 app.use('/api', routes)
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+  swaggerOptions: {
+    preauthorizeApiKey: {
+      authDefinitionKey: "ApiKeyAuth",
+      apiKeyValue: process.env.DEV_API_KEY,
+    },
+  },
+}));
 
 app.listen(port, () => {
   console.log(`speed-watches API listening on port ${port}`)
