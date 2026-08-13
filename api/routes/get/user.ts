@@ -12,8 +12,19 @@ const userQuerySchema = z.object({
 })
 
 router.get('/get/user', async (req, res) => {
-  console.log("calling get/user")
-  const parsed = getQueries(req.query, userQuerySchema)
+  let parsed: z.infer<typeof userQuerySchema>
+  try {
+    parsed = getQueries(req.query, userQuerySchema)
+  } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({
+          error: 'Invalid query parameters',
+          issues: e.issues.map(i => ({ path: i.path.join('.'), message: i.message }))
+        })
+      }
+      console.error('Query parsing failed:', e)
+      return res.status(500).json({ error: 'Unexpected query parsing error' })
+  }
   const { where } = classifyQueryFields(userQuerySchema.shape, parsed)
   const whereClause = buildWhereClause(where)
   const query = await sql`select * from users where ${whereClause}`

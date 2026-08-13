@@ -19,7 +19,7 @@ router.delete('/remove/user', async (req, res) => {
     return
   }
 
-  if (parsed.discordId === undefined && parsed.puuid === undefined) {
+  if (parsed.discordId === undefined) {
     res.status(400).send("Either puuid or discordId must be supplied to identify the user")
     return
   }

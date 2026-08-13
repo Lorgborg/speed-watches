@@ -14,7 +14,19 @@ const recentQuery = z.object({
 })
 
 router.get('/get/recent', async (req, res) => {
-  const parsed = getQueries(req.query, recentQuery)
+  let parsed: z.infer<typeof recentQuery>
+  try {
+    parsed = getQueries(req.query, recentQuery)
+  } catch (e: any) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({
+          error: 'Invalid query parameters',
+          issues: e.issues.map(i => ({ path: i.path.join('.'), message: i.message }))
+        })
+      }
+      console.error('Query parsing failed:', e)
+      return res.status(500).json({ error: 'Unexpected query parsing error' })
+  }
 
   const { where } = classifyQueryFields(recentQuery.shape, parsed)
   const whereClause = buildWhereClause(where)

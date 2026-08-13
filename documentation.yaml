@@ -15,7 +15,7 @@ info:
     ⚠️ All routes — including the POST/DELETE ones — currently read their
     parameters from the **query string** ('req.query'), not the JSON
     request body. This documentation reflects that as implemented.
-  version: 1.3.0
+  version: 1.4.0
 tags:
   - name: Get
     description: Endpoints for retrieving matchup notes, game data, and user data
@@ -29,9 +29,9 @@ tags:
     description: >
       Routes that are registered and reachable, but have bugs in their
       current implementation that mean they don't behave as their name
-      suggests, don't work at all, or silently ignore part of their
-      input. Included here so the surface area is visible, but none of
-      these should be relied on until fixed.
+      suggests or silently misbehave on certain inputs. Included here so
+      the surface area is visible, but none of these should be relied on
+      until fixed.
 components:
   schemas:
     Matchup:
@@ -90,13 +90,13 @@ components:
           nullable: true
         accountDetails:
           type: object
-          description: Raw Riot summoner details, cached at user-creation time
+          description: Raw Riot summoner details, cached at user-creation/update time
         rank:
           type: array
-          description: Raw Riot ranked-entries payload, cached at user-creation time
+          description: Raw Riot ranked-entries payload, cached at user-creation/update time
         topMastery:
           type: array
-          description: Player's top champion mastery entries, cached at user-creation time
+          description: Player's top champion mastery entries, cached at user-creation/update time
         backfillComplete:
           type: boolean
           description: Whether historical match backfill has finished for this user
@@ -395,7 +395,8 @@ paths:
       tags:
         - Get
       summary: Get a user by username, puuid, or discord ID
-      description: Looks up matching row(s) from the 'users' table.
+      description: >
+        Looks up matching row(s) from the 'users' table.
       parameters:
         - name: username
           in: query
@@ -421,8 +422,10 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
-        "400":
-          description: Invalid query parameters
+        "500":
+          description: >
+            Invalid query parameters (see known issue above — this route
+            does not distinguish invalid input from a real server error)
           content:
             application/json:
               schema:
@@ -470,8 +473,10 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/RecentGameRow"
-        "400":
-          description: Invalid query parameters
+        "500":
+          description: >
+            Invalid query parameters (see known issue above), or an
+            unexpected server/database error
           content:
             application/json:
               schema:
@@ -481,21 +486,14 @@ paths:
     get:
       tags:
         - Get
-        - Known Issues
       summary: Get game rows
       description: >
-        Gets games joined with their owning user. Returning a lot of games
-        could cause the docs page to hang.
-
-
-        🚧 **Known issue:** if 'matchId' is not supplied, the route looks up
-        the most recent matching game and intends to scope the final query to
-        it — but the lookup happens *after* the WHERE conditions have already
-        been built, so 'matchId' never actually gets applied to the final
-        query. In practice, omitting 'matchId' returns all games matching the
-        other filters (up to 'limit'), not just the latest one, and with no
-        explicit ORDER BY on the final query the row order isn't guaranteed.
-        Always pass 'matchId' explicitly if you need a single specific game.
+        Gets games joined with their owning user, newest first. All of
+        'puuid', 'matchId', 'championFighting', and 'championPlayed' are
+        applied directly to the WHERE clause when supplied, so filtering
+        by 'matchId' alone returns exactly that game. Results are capped
+        at 'limit' (default 10) and explicitly ordered by
+        'g.game_creation DESC'.
       parameters:
         - name: discordId
           in: query
@@ -512,9 +510,6 @@ paths:
           required: false
           schema:
             type: string
-          description: >
-            Recommended to always supply this explicitly — see the known
-            issue above for what happens when it's omitted.
         - name: championFighting
           in: query
           required: false
@@ -530,10 +525,10 @@ paths:
           required: false
           schema:
             type: string
-            default: "20"
+            default: "10"
       responses:
         '200':
-          description: Matching game row(s), joined with the owning user
+          description: Matching game row(s), joined with the owning user, newest first
           content:
             application/json:
               schema:
@@ -543,9 +538,15 @@ paths:
         '400':
           description: Invalid query parameters
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: string
+        '500':
+          description: Unexpected server or database error
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /get/gameInfo:
     get:
@@ -592,7 +593,11 @@ paths:
                 items:
                   $ref: "#/components/schemas/GameRow"
         '500':
-          description: Unexpected server or database error (also returned for invalid query parameters — errors aren't distinguished by status code on this route)
+          description: >
+            Unexpected server or database error (also returned for invalid
+            query parameters — errors are sent via 'res.send(e)' with no
+            status code override, so the transport-level status is used
+            rather than a distinguishing code)
           content:
             application/json:
               schema:
@@ -602,7 +607,6 @@ paths:
     post:
       tags:
         - Post
-        - Known Issues
       summary: Create a user
       description: >
         Creates a row in the 'users' table. Parameters are read from the
@@ -610,14 +614,6 @@ paths:
         must be provided — if 'summonerName' is given it's resolved to a
         PUUID via the main Riot token, which becomes the canonical stored
         puuid. Kicks off an async match-history backfill on success.
-
-
-        ⚠️ **Known issue:** 'api/routes/update/user.ts' also registers a
-        handler for 'POST /post/user' (rather than '/update/user', which its
-        folder location implies). Because route folders are loaded in the
-        order 'get, post, remove, update', this file's own handler in
-        'post/user.ts' is always matched first — the 'update/user.ts'
-        handler is currently dead code and never runs.
       parameters:
         - name: discordId
           in: query
@@ -665,29 +661,21 @@ paths:
     post:
       tags:
         - Post
-        - Known Issues
       summary: Append notes to a matchup
       description: >
         Appends the given note strings onto the existing 'notes' array for
         matching row(s) in the 'notes' table ('notes = notes || <new notes>').
-        Parameters are read from the query string.
-
-
-        🚧 **Known issue:** the update query joins 'notes' against 'users'
-        ('FROM users') but never adds a join predicate tying 'notes.puuid' to
-        'users.puuid'. When filtering only by 'discordId' (no 'puuid'), this
-        means the WHERE clause doesn't actually scope the update to that
-        user's notes — always pass 'puuid' explicitly to be safe, and treat
-        'discordId'-only filtering as unreliable until this is fixed. See
-        also '/update/matchupNote' and '/remove/matchupNote', which share the
-        exact same underlying query and issue.
+        Parameters are read from the query string. Correctly scopes the
+        update via 'notes.puuid = users.puuid' plus the supplied filters, so
+        'discordId'-only filtering is safe here. Returns '404' if nothing
+        matched. See also '/update/matchupNote', which shares this route's
+        intent but has its own, separate known issues.
       parameters:
         - name: discordId
           in: query
           required: false
           schema:
             type: string
-          description: See known issue above — prefer 'puuid' for reliable scoping.
         - name: puuid
           in: query
           required: false
@@ -720,25 +708,38 @@ paths:
               schema:
                 type: string
                 example: "note updated"
+        "400":
+          description: Invalid query parameters, or neither puuid nor discordId supplied
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No matching matchup note found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Unexpected server error
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /post/gameScore:
     post:
       tags:
         - Post
-        - Known Issues
       summary: Set pushing/laning/teamFighting scores on a game
       description: >
         Updates the 'pushing', 'laning', and/or 'teamFighting' columns on a
         row in the 'games' table. Parameters are read from the query string.
-        Always responds with 'true' regardless of whether any row was
-        actually updated.
-
-
-        🚧 **Known issue:** shares the same 'matchId'-not-applied bug as
-        '/get/game' — if 'matchId' is omitted, the route looks up the latest
-        matching game but that lookup isn't incorporated into the final
-        UPDATE's WHERE clause, so the update can apply more broadly than
-        intended. Always pass 'matchId' explicitly.
+        If 'matchId' is omitted, the latest matching game is looked up first
+        and its 'matchId' is folded back into the filters before the update
+        runs, so the update is correctly scoped either way. Returns '404' if
+        no row was updated (this used to always report success — that bug is
+        fixed).
       parameters:
         - name: discordId
           in: query
@@ -755,9 +756,7 @@ paths:
           required: false
           schema:
             type: string
-          description: >
-            Recommended to always supply this explicitly — see the known
-            issue above for what happens when it's omitted.
+          description: If omitted, the most recent matching game (by the other filters) is targeted.
         - name: pushing
           in: query
           required: false
@@ -775,12 +774,32 @@ paths:
             type: string
       responses:
         "200":
-          description: Always returned on success, regardless of whether a row was updated
+          description: A row was found and updated
           content:
             application/json:
               schema:
                 type: boolean
                 example: true
+        "400":
+          description: >
+            Invalid query parameters, or none of pushing/laning/teamFighting
+            supplied
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No matching game found, or no matching game found to update
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Unexpected server error
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /update/matchupNote:
     post:
@@ -789,26 +808,45 @@ paths:
         - Known Issues
       summary: Append notes to a matchup (update variant)
       description: >
-        Functionally identical to '/post/matchupNote' — appends the given
-        note strings onto the existing 'notes' array. Parameters are read
-        from the query string.
+        Intended to be functionally identical to '/post/matchupNote', but the
+        implementations have diverged and this route has several open bugs.
+        Parameters are read from the query string.
 
 
-        🚧 **Known issue:** shares the missing 'notes'/'users' join
-        predicate described under '/post/matchupNote' — prefer 'puuid' over
-        'discordId'-only filtering.
+        🚧 **Known issues:**
+          - The update query joins 'notes' against 'users' ('FROM users') but
+            never adds a join predicate tying 'notes.puuid' to 'users.puuid'
+            (unlike '/post/matchupNote' and '/remove/matchupNote', which both
+            have this predicate). Filtering only by 'discordId' does not
+            reliably scope the update to that user's notes.
+          - Field descriptors on this route's schema use plain 'where'
+            instead of qualified 'where:table.column', so a supplied
+            'discordId' or 'puuid' can resolve to an ambiguous column
+            reference between 'notes' and 'users' at query time.
+          - 'notes' must be submitted as an actual array — the
+            single-string-to-array convenience wrapping that
+            '/post/matchupNote' and '/remove/matchupNote' have is not
+            present here.
+          - There is no check requiring at least one of 'puuid'/'discordId'
+            to be supplied.
+          - The handler has no try/catch, so a database error or malformed
+            query throws unhandled rather than returning a controlled
+            response.
+          - The route always responds '200' with "note updated", even if the
+            WHERE clause matched zero rows.
       parameters:
         - name: discordId
           in: query
           required: false
           schema:
             type: string
-          description: See known issue above — prefer 'puuid' for reliable scoping.
+          description: See known issues above — may cause an ambiguous-column error or an under-scoped update.
         - name: puuid
           in: query
           required: false
           schema:
             type: string
+          description: See known issues above — may cause an ambiguous-column error or an under-scoped update.
         - name: notes
           in: query
           required: true
@@ -818,6 +856,7 @@ paths:
             type: array
             items:
               type: string
+          description: Must be supplied as an array — a single bare string is not auto-wrapped on this route.
         - name: championFighting
           in: query
           required: true
@@ -830,35 +869,100 @@ paths:
             type: string
       responses:
         "200":
-          description: Note updated
+          description: >
+            Always returned if the request reaches the query (see known
+            issues above — this does not confirm any row was actually
+            updated)
           content:
             text/plain:
               schema:
                 type: string
                 example: "note updated"
+
+  /update/user:
+    post:
+      tags:
+        - Update
+        - Known Issues
+      summary: Refresh cached Riot data for an existing user
+      description: >
+        Intended to re-resolve identity and refresh 'account_details',
+        'rank', and 'top_mastery' for a user that already exists, keyed by
+        'discordId'. Parameters are read from the query string.
+
+
+        🚧 **Known issue:** this route's duplicate-check logic was copied
+        from '/post/user' (create) without being adapted for update
+        semantics. Before running the 'UPDATE', it queries for any existing
+        row with a matching 'puuid' OR 'discordId' and returns '400' "The
+        discord id is already in the database" if one is found — but since
+        an update target must already exist by definition, this check will
+        reject essentially every legitimate call to this route. In its
+        current state, '/update/user' cannot successfully update an existing
+        user. Do not rely on this route until the duplicate-check is fixed
+        to allow updating the row it just found instead of rejecting it.
+      parameters:
+        - name: discordId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Discord snowflake ID identifying the row to update.
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot PUUID. Provide this or summonerName.
+        - name: summonerName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Riot ID (e.g. "Name#TAG"). Provide this or puuid.
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Defaults to "none" if omitted
+      responses:
+        "200":
+          description: User updated successfully (see known issue above — currently unreachable in normal use)
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "user with info <puuid> saved"
+        "400":
+          description: >
+            Invalid query parameters, invalid discordId, neither puuid nor
+            summonerName supplied, or — per the known issue above — the
+            discordId/puuid already existing (which will be true for any
+            real update target)
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /remove/matchupNote:
     delete:
       tags:
-        - Known Issues
         - Remove
-      summary: Remove notes from a matchup (currently appends instead)
+      summary: Remove specific note strings from a matchup
       description: >
-        🚧 **Behaves incorrectly.** Despite the route name and folder,
-        'api/routes/remove/matchupNote.ts' runs the exact same query as
-        '/post/matchupNote' and '/update/matchupNote'
-        ('notes = notes || <new notes>'), which **appends** to the notes
-        array rather than removing anything from it. Do not use this route
-        expecting deletion behavior until it's fixed. It also shares the
-        missing 'notes'/'users' join predicate described under
-        '/post/matchupNote' — prefer 'puuid' over 'discordId'-only filtering.
+        Removes only the note strings passed in 'notes' from the matching
+        row(s)' 'notes' array (via 'unnest'/'<> ALL(...)'), leaving any other
+        notes on that row intact. If every note on a row is removed, the
+        row's 'notes' array becomes empty rather than the row being deleted.
+        Correctly scopes the update via 'notes.puuid = users.puuid' plus the
+        supplied filters. Returns '404' if nothing matched.
       parameters:
         - name: discordId
           in: query
           required: false
           schema:
             type: string
-          description: See known issue above — prefer 'puuid' for reliable scoping.
         - name: puuid
           in: query
           required: false
@@ -873,7 +977,7 @@ paths:
             type: array
             items:
               type: string
-          description: Currently appended rather than removed — see description above
+          description: The exact note string(s) to remove. A single string is also accepted and will be wrapped in an array.
         - name: championFighting
           in: query
           required: true
@@ -886,47 +990,144 @@ paths:
             type: string
       responses:
         "200":
-          description: Note updated (appended, not removed — see summary)
+          description: Note(s) removed
           content:
             text/plain:
               schema:
                 type: string
-                example: "note updated"
+                example: "1 note row(s) deleted"
+        "400":
+          description: Invalid query parameters, or neither puuid nor discordId supplied
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No matching matchup note found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Unexpected server error
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /remove/note:
     delete:
       tags:
-        - Known Issues
         - Remove
-      summary: Remove a note (not implemented)
+      summary: Delete matching note row(s) outright
       description: >
-        🚧 **Non-functional.** 'api/routes/remove/note.ts' accepts no
-        parameters (its Zod schema is empty), builds a WHERE clause it never
-        uses, and never executes a query or calls 'res.send'/'res.json'.
-        Any request to this route will hang until the client times out. Do
-        not call this route.
-      parameters: []
+        Deletes entire row(s) from the 'notes' table matching the supplied
+        filters (required 'championFighting'/'championPlayed', optional
+        'role'/'puuid'/'discordId'), rather than removing individual note
+        strings from a row's array — use '/remove/matchupNote' if you only
+        want to drop specific note strings and keep the rest. Requires at
+        least one of 'puuid' or 'discordId'. Correctly joins 'notes' to
+        'users' for scoping.
+      parameters:
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: championFighting
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: championPlayed
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: role
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
-        default:
-          description: >
-            No response is ever sent by the current implementation — the
-            request will hang until the client-side timeout is reached.
+        "200":
+          description: Note row(s) deleted
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "2 note row(s) deleted"
+        "400":
+          description: Invalid query parameters, or neither puuid nor discordId supplied
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No matching matchup note found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Unexpected server error
+          content:
+            text/plain:
+              schema:
+                type: string
 
   /remove/user:
     delete:
       tags:
-        - Known Issues
         - Remove
-      summary: Remove a user (not implemented)
+      summary: Remove a user and their associated games/notes
       description: >
-        🚧 **Non-functional.** 'api/routes/remove/user.ts' accepts no
-        parameters (its Zod schema is empty), builds a WHERE clause it never
-        uses, and never executes a query or sends a response. Any request to
-        this route will hang until the client times out. Do not call this
-        route.
-      parameters: []
+        Looks up the user by 'puuid' (if supplied) or 'discordId', then
+        deletes their rows from 'notes', 'games', and 'users' in a single
+        transaction. Requires at least one of 'puuid' or 'discordId'.
+      parameters:
+        - name: discordId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Currently required in practice — see known issue above.
+        - name: puuid
+          in: query
+          required: false
+          schema:
+            type: string
+          description: See known issue above — supplying this without discordId currently fails.
       responses:
-        default:
+        "200":
+          description: User and associated data deleted
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "user <puuid> and associated data deleted"
+        "400":
+          description: Invalid query parameters, or neither puuid nor discordId supplied
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: No matching user found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
           description: >
-            No response is ever sent by the current implementation — the
-            request will hang until the client-side timeout is reached.
+            Unexpected server error, or (per known issue above) puuid
+            supplied without discordId
+          content:
+            text/plain:
+              schema:
+                type: string
