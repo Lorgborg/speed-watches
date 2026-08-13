@@ -19,20 +19,28 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/bull": "^3.15.9",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^25.9.2",
     "@types/swagger-ui-express": "^4.1.8",
     "@types/yamljs": "^0.2.34",
+    "eslint": "^10.8.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.1",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
   },
   "scripts": {
-    "checker": "npx tsx index.ts",
-    "api": "npx tsx ./api/app.ts",
-    "worker": "npx tsx utils/riot/riotWorker.ts",
-    "tsx": "4.21.0"
+    "checker": "npx tsx src/checker.ts",
+    "api": "npx tsx ./src/app.ts",
+    "worker": "npx tsx src/riot/riotWorker.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   }
 }
