@@ -6,7 +6,7 @@ import getOpponent from "../core/getOpponent.ts";
 import getPlaying from '../core/getPlaying.ts';
 import { callRiot } from "../riot/riotQueue.ts";
 import { getRiotTokens } from "../riot/riotTokens.ts";
-import { resolvePuuidForToken } from '../riot/resolvePuuidForTokens.ts';
+import { resolvePuuidForToken, callRiotForSummoner } from '../riot/resolvePuuidForTokens.ts';
 
 const { postgresuri } = process.env;
 
@@ -77,8 +77,8 @@ async function fetchMatchIdsPage(
   for (let n = 0; n < workerCount; n++) {
     const listTokenIndex = 1 + ((pivot + n) % workerCount)
     try {
+      const online = await callRiotForSummoner(listTokenIndex, summonerName, riotApi.prototype.idToMatch, "100", now, 0, start)
       const listSearchPuuid = await resolvePuuidForToken(listTokenIndex, summonerName)
-      const online = await callRiot(listTokenIndex, riotApi.prototype.idToMatch, listSearchPuuid, "100", now, 0, start)
       return { listTokenIndex, listSearchPuuid, online }
     } catch (e: unknown) {
       const err = e as { message?: string }
@@ -97,7 +97,7 @@ export async function onboardGames(puuid: string, summonerName: string) {
   }
 
   const user = (await sql`
-        SELECT * FROM users WHERE puuid = ${puuid}
+      SELECT * FROM users WHERE puuid = ${puuid}
     `)[0];
 
   if (!user) {

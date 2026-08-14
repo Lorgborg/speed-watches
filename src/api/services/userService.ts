@@ -1,6 +1,6 @@
 import { callRiot } from "../../riot/riotQueue.ts"
 import { idToChampion } from "../../core/idToChampion.ts"
-import { resolvePuuidForToken } from "../../riot/resolvePuuidForTokens.ts"
+import { callRiotForSummoner } from "../../riot/resolvePuuidForTokens.ts"
 import riotApi from "../../riot/riot.ts"
 import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from "../../riot/riotTokens.ts"
 
@@ -38,12 +38,11 @@ export async function resolvePlayer(parsed: {
 // summonerName, since the main-token puuid isn't portable.
 export async function enrichSummoner(summonerName: string) {
   const enrichTokenIndex = await pickWorkerTokenIndex()
-  const workerPuuid = await resolvePuuidForToken(enrichTokenIndex, summonerName)
 
   const [highestMastery, accountDetails, rank] = await Promise.all([
-    callRiot(enrichTokenIndex, riotApi.prototype.idToHighestMastery, workerPuuid),
-    callRiot(enrichTokenIndex, riotApi.prototype.idToSummoner, workerPuuid),
-    callRiot(enrichTokenIndex, riotApi.prototype.idToRank, workerPuuid),
+    callRiotForSummoner(enrichTokenIndex, summonerName, riotApi.prototype.idToHighestMastery),
+    callRiotForSummoner(enrichTokenIndex, summonerName, riotApi.prototype.idToSummoner),
+    callRiotForSummoner(enrichTokenIndex, summonerName, riotApi.prototype.idToRank),
   ]);
 
   await Promise.all(

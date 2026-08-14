@@ -6,7 +6,7 @@ import getOpponent from "./core/getOpponent.ts";
 import getPlaying from './core/getPlaying.ts';
 import { callRiot } from './riot/riotQueue.ts';
 import { MAIN_TOKEN_INDEX, pickWorkerTokenIndex } from './riot/riotTokens.ts';
-import { resolvePuuidForToken } from './riot/resolvePuuidForTokens.ts';
+import { callRiotForSummoner } from './riot/resolvePuuidForTokens.ts';
 import { resumeIncompleteBackfills } from './scripts/immigrant-scum.ts';
 const { postgresuri } = process.env;
 
@@ -32,8 +32,7 @@ async function check() {
   for(const user of users) {
     // checks games played within the last 5 minutes
     const listTokenIndex = await pickWorkerTokenIndex()
-    const resolvedPuuid = await resolvePuuidForToken(listTokenIndex, user.summoner_name)
-    const gamesPlayed = await callRiot(listTokenIndex, riotApi.prototype.idToMatch, resolvedPuuid, "5", 0, epochTime, 0) // beyonce, 5, 29 days: array
+    const gamesPlayed = await callRiotForSummoner(listTokenIndex, user.summoner_name, riotApi.prototype.idToMatch, "5", 0, epochTime, 0) // beyonce, 5, 29 days: array
     for(const gameId of gamesPlayed) {
       // currently using the main api key to prevent encrypted puuid from cock blocking
       const game = await callRiot(MAIN_TOKEN_INDEX, riotApi.prototype.matchIdToMatches, gameId);
