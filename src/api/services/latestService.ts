@@ -1,5 +1,5 @@
-import { classifyQueryFields, buildWhereClause } from "../query/queryClassifier.ts"
-import { sql } from "../../config/services.ts"
+import { classifyQueryFields, buildWhereClause } from "../query/queryClassifier"
+import { sql } from "../../config/services"
 import z from "zod"
 
 type SqlValue =
@@ -15,7 +15,7 @@ export async function latestService(
   shape: Record<string, z.ZodTypeAny>,
   parsed: Record<string, SqlValue | undefined>
 ) {
-  if (parsed.championFighting !== undefined && parsed.championPlayed !== undefined) {
+  if(parsed.championFighting !== undefined && parsed.championPlayed !== undefined) {
     const { where: latestWhere } = classifyQueryFields(shape, parsed)
     const latestWhereClause = buildWhereClause(latestWhere)
     const latestGame = await sql`
@@ -33,6 +33,8 @@ export async function latestService(
       ORDER BY g.game_creation DESC
       LIMIT 1;
     `
+    parsed.championFighting = latestGame[0].champion_fighting
+    parsed.championPlayed = latestGame[0].champion_played
     return {
       championFighting: latestGame[0].champion_fighting,
       championPlayed: latestGame[0].champion_played,
