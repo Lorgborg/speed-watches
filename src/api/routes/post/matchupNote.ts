@@ -4,6 +4,7 @@ const router = Router()
 import z from "zod"
 import { getQueries } from "../../query/inputValidation.ts"
 import { classifyQueryFields, buildWhereClause } from "../../query/queryClassifier.ts"
+import { latestService } from "../../services/latestService.ts"
 
 const gameNote = z.object({
   discordId: z.string().optional().describe("where:users.discord_id"),
@@ -16,8 +17,8 @@ const gameNote = z.object({
     },
     z.array(z.string())
   ).describe("value"),
-  championFighting: z.string().describe("where:notes.champion_fighting"),
-  championPlayed: z.string().describe("where:notes.champion_played")
+  championFighting: z.string().describe("where:notes.champion_fighting").optional(),
+  championPlayed: z.string().describe("where:notes.champion_played").optional()
 })
 
 router.post('/post/matchupNote', async (req, res) => {
@@ -35,7 +36,11 @@ router.post('/post/matchupNote', async (req, res) => {
   }
 
   try {
+    await latestService(gameNote.shape, parsed)
     const { where, values } = classifyQueryFields(gameNote.shape, parsed)
+    if(parsed.championFighting === undefined || parsed.championPlayed === undefined) {
+      res.status(404).send("Hey notes will affect multiple rows")
+    }
     const whereClause = buildWhereClause(where)
 
     const query = await sql`

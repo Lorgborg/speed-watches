@@ -9,16 +9,12 @@ import { classifyQueryFields, buildWhereClause } from "../../query/queryClassifi
 const gameNote = z.object({
   discordId: z.string().optional().describe("where:users.discord_id"),
   puuid: z.string().optional().describe("where:notes.puuid"),
-  notes: z.preprocess(
-    (val) => {
-      if (typeof val === 'string') return [val]
-      if (Array.isArray(val)) return val
-      return []
-    },
-    z.array(z.string())
-  ).describe("value"),
-  championFighting: z.string().describe("where:notes.champion_fighting"),
-  championPlayed: z.string().describe("where:notes.champion_played")
+  championFighting: z.string().describe("where:notes.champion_fighting").optional(),
+  championPlayed: z.string().describe("where:notes.champion_played").optional(),
+  index: z.preprocess(
+    (val) => Number(val),
+    z.number().refine((n) => !isNaN(n))
+  )
 })
 
 router.delete('/remove/matchupNote', async (req, res) => {
@@ -36,7 +32,7 @@ router.delete('/remove/matchupNote', async (req, res) => {
   }
 
   try {
-    const { where, values } = classifyQueryFields(gameNote.shape, parsed)
+    const { where } = classifyQueryFields(gameNote.shape, parsed)
     const whereClause = buildWhereClause(where)
 
     // Rebuilds the notes array with any string matching an entry in
@@ -45,12 +41,11 @@ router.delete('/remove/matchupNote', async (req, res) => {
     // safe no-op rather than deleting everything.
     const query = await sql`
       UPDATE notes
-      SET notes = ARRAY(
-        SELECT n FROM unnest(notes) AS n
-        WHERE n <> ALL(${values.notes})
-      )
-      FROM users
-      WHERE notes.puuid = users.puuid AND ${whereClause}
+      SET notes = 
+        notes[1:${parsed.index - 1}] || 
+        notes[${parsed.index + 1}:array_length(notes, 1)]
+      from users
+      where users.puuid=notes.puuid and ${whereClause}
     `
 
     if (query.count === 0) {
